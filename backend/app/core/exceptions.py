@@ -18,7 +18,7 @@ class AppException(Exception):
         super().__init__(self.message)
 
 
-class notFoundError(AppException):
+class NotFoundError(AppException):
     code = "not_found"
     message = "未找到资源"
     http_status = HTTPStatus.NOT_FOUND
@@ -34,3 +34,8 @@ class ConfigurationError(AppException):
     code = "configuration_error"
     message = "服务配置缺失"
     http_status = HTTPStatus.SERVICE_UNAVAILABLE
+
+class ValidationError(AppException):
+    code = "validation_error"
+    message = "请求参数验证失败"
+    http_status = HTTPStatus.BAD_REQUEST
