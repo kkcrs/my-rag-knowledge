@@ -63,6 +63,16 @@ class Settings(BaseSettings):
     # RRF平滑常数，业界一般用60，越小越偏向高排名条目
     rrf_k: int = 60
 
+    # ===== Agentic RAG =====
+    # 关掉后图退化为单轮检索，作为单轮vs agent 循环的对比开关
+    agent_loop_enabled: bool = True
+    # 最大检索轮次（含首轮）。LLM决策最多触发max_rounds-1次再检索，避免循环调用
+    agent_max_rounds: int = 3
+
+
+
+
+
 
     
 

@@ -54,9 +54,18 @@ class QueryRewriter:
         queries = [line.strip(" -*0123456789.、") for line in text.splitlines()]
         return [q for q in queries if q][:n]
 
-    async def optimize(self, question: str, multi_query_count: int) -> QueryRouteResult:
+    async def apply_route(
+        self, question: str, route: QueryRoute, multi_query_count: int
+    ) -> QueryRouteResult:
+        """已知目标 route 时，按 route 执行对应改写链路并填充 QueryRouteResult。
+
+        与 optimize 的区别：optimize 内部先调 decide_route 判定 route，再调本方法分发；
+        apply_route 跳过判定环节，直接按调用方给定的 route 执行——第 7 章 Agentic RAG
+        在 switch_route 决策时由 planner 直接指定 route，复用这套分发逻辑补齐字段，
+        避免在 plan_retrieval 节点里再写一遍 if-elif 与降级兜底。
+        """
         try:
-            route = await self.decide_route(question)
+            # route = await self.decide_route(question)
             if route == "rewrite":
                 rewritten = await self.rewrite(question)
                 if not rewritten:
@@ -74,8 +83,23 @@ class QueryRewriter:
                 return QueryRouteResult(route="multi_query", query=question, multi_queries=queries)
             return QueryRouteResult(route="original", query=question)
         except Exception:
-            logger.exception("query optimize 失败，降级到 original: question=%r", question)
+            logger.exception(
+                "apply_route 失败，降级到 original: route=%s, question=%r",
+                 route,
+                 question
+                 )
             return QueryRouteResult(route="original", query=question)
+
+    async def optimize(self, question: str, multi_query_count: int) -> QueryRouteResult:
+        """完整 4 选 1：先判定路由，再分发到 apply_route。任何一步失败降级 original。"""
+        try:
+            route = await self.decide_route(question)
+        except Exception:
+            logger.exception(
+                "query route 判定失败，降级到 original: question=%r", question
+            )
+            return QueryRouteResult(route="original", query=question)
+        return await self.apply_route(question, route, multi_query_count)
 
 
 _rewriter: QueryRewriter | None = None
