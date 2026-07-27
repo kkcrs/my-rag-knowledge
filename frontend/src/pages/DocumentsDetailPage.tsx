@@ -25,6 +25,8 @@ import {
   RedoOutlined,
 } from '@ant-design/icons'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import remarkGfm from 'remark-gfm'
+import { gfmComponents } from '@/components/markdownComponents'
 import ReactMarkdown from 'react-markdown'
 import {
   deleteDocument,
@@ -293,7 +295,7 @@ export function DocumentDetailPage() {
     if (content === null) return <Skeleton active />
     return (
       <div style={{ padding: 16, maxHeight: 600, overflow: 'auto' }}>
-        <ReactMarkdown>{content}</ReactMarkdown>
+        <ReactMarkdown remarkPlugins={[remarkGfm]} components={gfmComponents}>{content}</ReactMarkdown>
       </div>
     )
   }

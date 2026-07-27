@@ -252,6 +252,9 @@ export function DocumentsPage() {
               pageSize,
               total: listQuery.data?.total ?? 0,
               showSizeChanger: true,
+              showQuickJumper: true,
+              showTotal: (total) => `共 ${total} 条`,
+              pageSizeOptions: ['10', '20', '50', '100'],
               onChange: (nextPage, nextSize) => {
                 setPage(nextPage)
                 setPageSize(nextSize)

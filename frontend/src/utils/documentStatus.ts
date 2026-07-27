@@ -1,4 +1,4 @@
-import type { DocumentRead } from '@client/types.gen'
+import type { DocumentRead } from '@/client/types.gen'
 
 type DocumentStatus = DocumentRead['status']
 

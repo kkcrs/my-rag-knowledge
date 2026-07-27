@@ -3,6 +3,7 @@ import { BasicLayout } from "@/layouts/BasicLayout";
 import { HomePage } from "@/pages/HomePage";
 import { DocumentsPage } from "@/pages/DocumentsPage";
 import { DocumentDetailPage } from "@/pages/DocumentsDetailPage";
+import { ChatPage } from "@/pages/ChatPage";
 
 export const router = createBrowserRouter([
   {
@@ -15,6 +16,7 @@ export const router = createBrowserRouter([
       },
       {path: 'documents', element: <DocumentsPage/>},
       {path: 'documents/:id', element: <DocumentDetailPage/>},
+      {path: 'chat', element: <ChatPage/>},
     ],
   },
 ]);

@@ -15,7 +15,7 @@ const menuItems = [
   {
     key: '/chat',
     icon: <MessageOutlined />,
-    label: '知识问答',
+    label: <Link to="/chat">知识问答</Link>,
     disabled: false,
   },
 ]

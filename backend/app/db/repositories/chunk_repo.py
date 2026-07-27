@@ -5,7 +5,8 @@ from uuid import UUID
 from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.db.models import DocumentChunk
+from app.db.models import Document, DocumentChunk
+from sqlalchemy.orm import selectinload
 
 
 @dataclass(frozen=True)
@@ -91,3 +92,56 @@ class DocumentChunkRepository:
             min_length=int(row.min_len or 0),
             max_length=int(row.max_len or 0),
         )
+
+    async def vector_search(
+        self,
+        query_embedding: list[float],
+        top_k: int,
+    ) -> list[tuple[DocumentChunk, float]]:
+        """按 cosine 距离做 Top-K 向量检索。
+
+        - 仅检索状态为 ready 的文档（避免拿到尚未完成入库的脏 chunk）
+        - 返回 (chunk, distance) 列表，distance 越小越相似（pgvector cosine_distance）
+        - 用 selectinload 把所属 Document 一并加载，方便上层直接读 document.name
+        而不会再发 N 次 lazy load 查询
+        """
+        distance = DocumentChunk.embedding.cosine_distance(query_embedding)
+        stmt = (
+            select(DocumentChunk, distance.label("distance"))
+            .join(Document, Document.id == DocumentChunk.document_id)
+            .where(Document.status == "ready")
+            .order_by(distance.asc())
+            .limit(top_k)
+            .options(selectinload(DocumentChunk.document))
+        )
+        rows = (await self.session.execute(stmt)).all()
+        return [(chunk, float(dist)) for chunk, dist in rows]
+
+    async def keyword_search(
+        self,
+        query: str,
+        top_k: int,
+    ) -> list[tuple[DocumentChunk, float]]:
+        """中文全文检索 Top-K: plainto_tsquery + ts_rank.
+
+        - 用 chinese_zh 文本搜索配置（zhparser 切词，迁移里建好）
+        - plainto_tsquery: 自动把多个词 AND 起来，对用户输入容错最好
+          ("差旅 报销"和"差旅报销"都会切成同一组 token)
+        - 仅命中 status='ready' 文档，避免拿到尚未完成入库的脏 chunk
+        - 返回 (chunk, ts_rank) 列表，ts_rank 越大越相关
+        """
+        tsquery = func.plainto_tsquery("chinese_zh", query)
+        rank_expr = func.ts_rank(DocumentChunk.content_tsv, tsquery)
+        stmt = (
+            select(DocumentChunk, rank_expr.label("rank"))
+            .join(Document, Document.id == DocumentChunk.document_id)
+            .where(
+                Document.status == "ready",
+                DocumentChunk.content_tsv.op("@@")(tsquery),
+            )
+            .order_by(rank_expr.desc())
+            .limit(top_k)
+            .options(selectinload(DocumentChunk.document))
+        )
+        rows = (await self.session.execute(stmt)).all()
+        return [(chunk, float(rank)) for chunk, rank in rows]
