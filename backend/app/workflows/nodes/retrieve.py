@@ -39,5 +39,8 @@ def _merge_chunks(
             prev = best.get(key)
             if prev is None or (chunk.rrf_score or 0.0) > (prev.rrf_score or 0.0):
                 best[key] = chunk
-    ranked = sorted(best.values(), key=lambda c: c.rrf_score or 0.0, reverse=True)
+    ranked = sorted(
+        best.values(),
+        key=lambda chunk: (-(chunk.rrf_score or 0.0), str(chunk.chunk_id)),
+    )
     return ranked[:top_k]

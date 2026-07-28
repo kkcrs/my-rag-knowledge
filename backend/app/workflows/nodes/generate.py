@@ -11,9 +11,10 @@ async def stream_generate(state: RAGState) -> AsyncIterator[str]:
     refused 状态下调用方应直接跳过本函数。
     """
     messages = build_answer_messages(
-        question=state["question"],
+        question=state.get("standalone_question") or state["question"],
         chunks=state["retrieved_chunks"],
-        history=state.get("chat_history", []),
+        # 历史只用于 normalize_query 消解指代，不能作为当前答案的事实来源。
+        history=[],
     )
     async for chunk in get_chat_model().astream(messages):
         text = chunk.content

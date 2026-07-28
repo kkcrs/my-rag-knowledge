@@ -1,3 +1,6 @@
+import hashlib
+import json
+
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.retrieval.vector_retriever import RetrievedChunk
 from uuid import UUID
@@ -17,6 +20,33 @@ from app.workflows.nodes import load_context, stream_generate
 from app.workflows.rag_state import RAGState
 
 logger = get_logger(__name__)
+
+ANSWER_CACHE_REVISION = "rag-answer-v1"
+
+
+def _build_answer_cache_key(state: RAGState) -> str:
+    """Bind a reusable answer to the normalized intent and exact evidence text."""
+    question = state.get("standalone_question") or state["question"]
+    payload = {
+        "revision": ANSWER_CACHE_REVISION,
+        "question": " ".join(question.casefold().split()),
+        "model": settings.chat_model,
+        "seed": settings.chat_seed,
+        "verify_answer": settings.verify_answer_enabled,
+        "evidence": [
+            {
+                "chunk_id": str(chunk.chunk_id),
+                "content_sha256": hashlib.sha256(
+                    chunk.content.encode("utf-8")
+                ).hexdigest(),
+            }
+            for chunk in state.get("retrieved_chunks", [])
+        ],
+    }
+    serialized = json.dumps(
+        payload, ensure_ascii=False, sort_keys=True, separators=(",", ":")
+    )
+    return hashlib.sha256(serialized.encode("utf-8")).hexdigest()
 
 
 def _serialize_citation(chunk: RetrievedChunk, ordinal: int) -> dict:
@@ -126,6 +156,9 @@ class ChatService:
                 final_state = await get_rag_graph().ainvoke(state)
                 state.update(final_state)  # type: ignore[arg-type]
 
+                if not state.get("refused"):
+                    state["answer_cache_key"] = _build_answer_cache_key(state)
+
                 # 3. user 消息落库
                 await self._persist_user_message(state, session)
 
@@ -165,12 +198,25 @@ class ChatService:
 
                 # 5. 生成：拒答直接发答案文案；否则逐 token 流式
                 verify_result: VerifyResult | None = None
+                cached_message: Message | None = None
+                if not state.get("refused"):
+                    cached_message = await ConversationRepository(
+                        session
+                    ).find_cached_answer(
+                        state["conversation_id"], state["answer_cache_key"]
+                    )
+
                 if state.get("refused"):
                     yield {
                         "event": "token",
                         "data": {"delta": state["answer"]},
                     }
+                elif cached_message is not None:
+                    state["answer"] = cached_message.content
+                    state["answer_cache_hit"] = True
+                    yield {"event": "token", "data": {"delta": state["answer"]}}
                 else:
+                    state["answer_cache_hit"] = False
                     answer_parts: list[str] = []
                     async for delta in stream_generate(state):
                         answer_parts.append(delta)
@@ -178,9 +224,27 @@ class ChatService:
                     state["answer"] = "".join(answer_parts)
 
                 # 6. 答案校验
-                if settings.verify_answer_enabled and not state.get("refused"):
+                if (
+                    settings.verify_answer_enabled
+                    and not state.get("refused")
+                    and cached_message is not None
+                ):
+                    cached_verify = cached_message.extra_metadata.get(
+                        "verify_result", {}
+                    )
+                    verify_result = VerifyResult(
+                        verified=True,
+                        reason=str(cached_verify.get("reason") or ""),
+                    )
+                    yield {
+                        "event": "verify_result",
+                        "data": _build_verify_payload(
+                            verify_result, replacement_answer=None
+                        ),
+                    }
+                elif settings.verify_answer_enabled and not state.get("refused"):
                     verify_result = await get_answer_verifier().verify(
-                        question=state["query"],
+                        question=state.get("standalone_question") or state["question"],
                         answer=state["answer"],
                         chunks=list(state.get("retrieved_chunks", [])),
                     )
@@ -259,6 +323,15 @@ class ChatService:
             "refused": bool(state.get("refused")),
             "query_route": _build_query_route_payload(state),
             "agent_steps": _serialize_agent_steps(state),
+            "answer_cache_key": state.get("answer_cache_key"),
+            "answer_cache_hit": bool(state.get("answer_cache_hit")),
+            "answer_cache_eligible": bool(
+                not state.get("refused")
+                and (
+                    not settings.verify_answer_enabled
+                    or (verify_result is not None and verify_result.verified)
+                )
+            ),
         }
         if verify_result is not None:
             extra_metadata["verify_result"] = _build_verify_payload(

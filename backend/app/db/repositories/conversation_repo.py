@@ -47,6 +47,25 @@ class ConversationRepository:
         rows = list((await self.session.execute(stmt)).scalars().all())
         return list(reversed(rows))
 
+    async def find_cached_answer(
+        self, conversation_id: UUID, answer_cache_key: str
+    ) -> Message | None:
+        """Return the newest verified answer for the exact question/evidence key."""
+        stmt = (
+            select(Message)
+            .where(
+                Message.conversation_id == conversation_id,
+                Message.role == MessageRole.ASSISTANT,
+                Message.extra_metadata.op("->>")("answer_cache_key")
+                == answer_cache_key,
+                Message.extra_metadata.op("->>")("answer_cache_eligible")
+                == "true",
+            )
+            .order_by(Message.created_at.desc(), Message.id.desc())
+            .limit(1)
+        )
+        return (await self.session.execute(stmt)).scalar_one_or_none()
+
     async def add_messages(self, messages: Sequence[Message]) -> None:
         if not messages:
             return

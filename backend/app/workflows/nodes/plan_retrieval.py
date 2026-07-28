@@ -23,8 +23,9 @@ async def plan_retrieval(state: RAGState) -> RAGState:
         return {"agent_steps": steps}
 
     # 后续轮: 由 LLM planner 决定如何重试
+    standalone_question = state.get("standalone_question") or state["question"]
     decision = await get_agent_planner().plan(
-        question=state["query"],
+        question=standalone_question,
         current_route=current_route,
         current_query=current_query,
         previous_steps=steps,
@@ -48,7 +49,7 @@ async def plan_retrieval(state: RAGState) -> RAGState:
         # 真正切换: 调 QueryRewriter 补齐目标路由对应字段, 避免只换标签不换行为
         rewriter = get_query_rewriter()
         result = await rewriter.apply_route(
-            question=state["query"],
+            question=standalone_question,
             route=decision.new_route,
             multi_query_count=settings.query_multi_query_count,
         )

@@ -41,6 +41,8 @@ class Settings(BaseSettings):
     chat_base_url: str = "https://dashscope.aliyuncs.com/compatible-mode/v1"
     chat_api_key: str = ""
     chat_model: str = "qwen-plus"
+    # 相同输入固定采样种子，降低路由、生成和校验结果漂移。
+    chat_seed: int = 42
 
     # ===== 检索与问答 =====
     # 检索 Top-K：交给 LLM 的候选 chunk 数量

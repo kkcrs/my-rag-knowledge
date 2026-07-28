@@ -110,7 +110,7 @@ class DocumentChunkRepository:
             select(DocumentChunk, distance.label("distance"))
             .join(Document, Document.id == DocumentChunk.document_id)
             .where(Document.status == "ready")
-            .order_by(distance.asc())
+            .order_by(distance.asc(), DocumentChunk.id.asc())
             .limit(top_k)
             .options(selectinload(DocumentChunk.document))
         )
@@ -139,7 +139,7 @@ class DocumentChunkRepository:
                 Document.status == "ready",
                 DocumentChunk.content_tsv.op("@@")(tsquery),
             )
-            .order_by(rank_expr.desc())
+            .order_by(rank_expr.desc(), DocumentChunk.id.asc())
             .limit(top_k)
             .options(selectinload(DocumentChunk.document))
         )

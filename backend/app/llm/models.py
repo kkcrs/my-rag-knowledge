@@ -26,6 +26,7 @@ def get_chat_model() -> BaseChatModel:
         # 知识库问答 + 严格的引用编号约束属于指令遵循任务，温度设 0
         # 避免 [N] 编号在不同 chunk 间漂移
         temperature=0,
+        seed=settings.chat_seed,
         streaming=True,
     )
     return _chat_model

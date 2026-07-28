@@ -13,7 +13,9 @@ class RAGState(TypedDict, total=False):
     # load_context 产出
     chat_history: list[Message]
 
-    # normalize_query 产出（本章 = question）
+    # normalize_query 产出：standalone_question 表示消解指代后的用户真实问题；
+    # query 是检索文本，后续可能被 rewrite / HyDE 改写，二者不能混用。
+    standalone_question: str
     query: str
 
     # route_query 产出
@@ -41,6 +43,8 @@ class RAGState(TypedDict, total=False):
 
     # generate 产出
     answer: str
+    answer_cache_key: str
+    answer_cache_hit: bool
 
     # chat_service 落库后回写
     user_message_id: UUID

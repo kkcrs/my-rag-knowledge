@@ -95,8 +95,7 @@ def rrf_fuse(
 
     fused = sorted(
         by_id.values(),
-        key=lambda c: c.rrf_score or 0.0,
-        reverse=True,
+        key=lambda chunk: (-(chunk.rrf_score or 0.0), str(chunk.chunk_id)),
     )
     return fused[:top_k]
 def _with_vector(hit: RetrievedChunk, *, rank: int, k: int) -> RetrievedChunk:
