@@ -35,6 +35,9 @@ class RAGState(TypedDict, total=False):
     retrieval_round: int
     # observe_context 判定本轮候选是否足够; True 时图走向 END
     context_sufficient: bool
+    # rerank 后基于 Top1 score 的拒答闸门
+    # False 时图走向 refuse 节点；True 时图走向 END
+    context_is_enough: bool
 
     # generate 产出
     answer: str

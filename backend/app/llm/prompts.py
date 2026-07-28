@@ -209,3 +209,74 @@ def build_agent_plan_messages(
             }
         ).to_messages()
     )
+
+# ==============================================================================
+# 第 8 章: 多轮上下文化、答案校验 prompt
+# ==============================================================================
+
+_CONTEXTUALIZE_SYSTEM = """你是一个多轮对话查询改写助手。请基于对话历史把用户当前问题改写成**独立完整、可单独检索**的问句：
+
+- 消解指代："它"、"这个"、"上面提到的..."、"刚才那个..."等
+- 补全省略：用户在追问场景里经常省略主语或宾语，需要从历史里把缺失成分补全
+- 不要回答问题，不要扩展含义，不要改变用户的真实意图
+- 不要加任何引导、编号、解释，只输出单行改写后的问句
+- 如果当前问题已经独立完整，直接原样输出
+
+【对话历史】
+{history}"""
+
+_CONTEXTUALIZE_HUMAN = "{question}"
+
+CONTEXTUALIZE_PROMPT = ChatPromptTemplate.from_messages(
+    [("system", _CONTEXTUALIZE_SYSTEM), ("human", _CONTEXTUALIZE_HUMAN)]
+)
+
+
+def build_contextualize_messages(question: str, history: str) -> list[BaseMessage]:
+    return list(
+        CONTEXTUALIZE_PROMPT.invoke(
+            {"question": question, "history": history}
+        ).to_messages()
+    )
+
+_VERIFY_ANSWER_SYSTEM = """你是一个 RAG 答案可信度校验员。请判断回答的核心事实是否能被参考片段支撑。
+
+判定标准（按优先级）：
+- 优先看答案是否基于片段做了合理的概括与复述：只要关键事实（型号、数字、名称、规则、时间）与片段一致，就算支撑
+- 答案主动做出原文完全没有的推断、编造数字、张冠李戴才算不支撑
+- 礼貌话、过渡句、复述问题不算关键事实
+- 答案已标 [N] 引用编号的要重点核查：N 号片段内容是否真的与对应结论一致
+- 拒答文案（“未找到”“没有相关信息”等）直接判 verified=true；拒答本身就是安全输出
+- **重要：不确定时偏向 verified=true**，避免误杀正常回答
+
+输出单行 JSON：{{"verified": true/false, "reason": "一句话理由（中文）"}}
+示例：{{"verified": true, "reason": "核心结论均可在片段中找到对应依据"}}"""
+
+_VERIFY_ANSWER_HUMAN = """【用户问题】
+{question}
+
+【参考片段】
+{chunks_text}
+
+【模型回答】
+{answer}
+
+请输出校验结果 JSON。"""
+
+VERIFY_ANSWER_PROMPT = ChatPromptTemplate.from_messages(
+    [("system", _VERIFY_ANSWER_SYSTEM), ("human", _VERIFY_ANSWER_HUMAN)]
+)
+
+
+def build_verify_answer_messages(
+    question: str, answer: str, chunks_text: str
+) -> list[BaseMessage]:
+    return list(
+        VERIFY_ANSWER_PROMPT.invoke(
+            {
+                "question": question,
+                "answer": answer,
+                "chunks_text": chunks_text,
+            }
+        ).to_messages()
+    )

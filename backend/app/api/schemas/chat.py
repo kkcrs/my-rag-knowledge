@@ -43,6 +43,31 @@ class ConversationCreate(BaseModel):
     title: str = Field("新对话", min_length=1, max_length=256)
 
 
+class ConversationListItem(BaseModel):
+    """会话列表元素：侧栏渲染用，比 ConversationRead 多带 message_count。"""
+
+    id: UUID
+    title: str
+    updated_at: datetime
+    message_count: int
+
+
+class ConversationPage(BaseModel):
+    """会话列表分页响应。"""
+
+    items: list[ConversationListItem]
+    total: int
+    page: int
+    page_size: int
+
+
+class VerifyResultRead(BaseModel):
+    """answer_verifier 校验结果。"""
+
+    verified: bool
+    reason: str | None = None
+
+
 class RetrievalMeta(BaseModel):
     """混合检索调试元数据。
 
@@ -59,6 +84,7 @@ class RetrievalMeta(BaseModel):
     keyword_rank: int | None = None
     keyword_score: float | None = None
     rrf_score: float | None = None
+    rerank_score: float | None = None
 
 class ConversationRead(BaseModel):
     model_config = ConfigDict(from_attributes=True)
@@ -118,6 +144,8 @@ class MessageRead(BaseModel):
     query_route: QueryRouteRead | None = None
     # Agentic RAG 决策轨迹； user/旧消息/关闭 agent loop时为None
     agent_steps: list[AgentStep] | None = None
+    # answer_verifier 校验结果；user / 旧消息 / 拒答路径为 None
+    verify_result: VerifyResultRead | None = None
 
     @classmethod
     def from_orm(cls, message) -> "MessageRead":  # type: ignore[no-untyped-def]
@@ -135,6 +163,9 @@ class MessageRead(BaseModel):
             if is_assistant
             else None,
             agent_steps=_parse_agent_steps(message.extra_metadata)
+            if is_assistant
+            else None,
+            verify_result=_parse_verify_result(message.extra_metadata)
             if is_assistant
             else None,
         )
@@ -165,6 +196,19 @@ class ConversationDetail(BaseModel):
 
 class ChatRequest(BaseModel):
     question: str = Field(min_length=1, max_length=2000)
+
+def _parse_verify_result(metadata: dict | None) -> VerifyResultRead | None:
+    """从 messages.extra_metadata 中提取 verify_result 字段。"""
+    if not metadata:
+        return None
+    raw = metadata.get("verify_result")
+    if not isinstance(raw, dict):
+        return None
+    try:
+        return VerifyResultRead.model_validate(raw)
+    except Exception:
+        return None
+
 
 def _parse_query_route(metadata: dict | None) -> QueryRouteRead | None:
     """从 messages.metadata 中提取 query_route 字段。

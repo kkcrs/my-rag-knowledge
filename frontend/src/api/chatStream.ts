@@ -26,6 +26,13 @@ export interface ChatTokenEvent {
     delta: string
 }
 
+export interface ChatVerifyResultEvent {
+    type: 'verify_result'
+    verified: boolean
+    reason: string | null
+    replacementAnswer: string | null
+}
+
 export interface ChatEndEvent {
     type: 'end'
     message_id: string
@@ -44,6 +51,7 @@ export type ChatStreamEvent =
     | ChatAgentStepsEvent
     | ChatCitationsEvent
     | ChatTokenEvent
+    | ChatVerifyResultEvent
     | ChatEndEvent
     | ChatErrorEvent
 
@@ -101,6 +109,14 @@ export async function streamChat({
                     break
                 case 'token':
                     onEvent({ type: 'token', delta: data.delta ?? '' })
+                    break
+                case 'verify_result':
+                    onEvent({
+                        type: 'verify_result',
+                        verified: Boolean(data.verified),
+                        reason: data.reason ?? null,
+                        replacementAnswer: data.replacement_answer ?? null,
+                    })
                     break
                 case 'message_end':
                     completed = true

@@ -57,6 +57,7 @@ export const CitationList = forwardRef<CitationListHandle, CitationListProps>(
 
         const items = citations.map((citation) => {
             const sourceTag = formatSourceTag(citation.retrieval_meta?.sources)
+            const rerankScore = citation.retrieval_meta?.rerank_score
             return {
             key: panelKey(citation),
             label: (
@@ -67,6 +68,11 @@ export const CitationList = forwardRef<CitationListHandle, CitationListProps>(
                             <Tag color={sourceTag.color} style={{ marginInlineEnd: 8 }}>{sourceTag.label}</Tag>
                         ) : null
                     }
+                    {rerankScore != null ? (
+                        <Tag color="gold" style={{ marginInlineEnd: 8 }}>
+                            {`rerank ${rerankScore.toFixed(2)}`}
+                        </Tag>
+                    ) : null}
                     {citation.document_id ? (
                         <Link to={`/documents/${citation.document_id}`}>
                             {citation.document_name}

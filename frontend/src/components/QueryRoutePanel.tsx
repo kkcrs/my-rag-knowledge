@@ -27,6 +27,7 @@ export function QueryRoutePanel({ queryRoute }: QueryRoutePanelProps) {
         <Collapse
             size="small"
             ghost
+            defaultActiveKey={[]}
             style={{ marginTop: 12, background: '#fafafa', borderRadius: 6 }}
             items={[
                 {

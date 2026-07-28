@@ -2,8 +2,10 @@ from dataclasses import dataclass
 from typing import get_args
 
 from app.core.logging import get_logger
+from app.db.models import Message, MessageRole
 from app.llm.models import get_chat_model
 from app.llm.prompts import (
+    build_contextualize_messages,
     build_hyde_messages,
     build_multi_query_messages,
     build_rewrite_messages,
@@ -90,6 +92,24 @@ class QueryRewriter:
                  )
             return QueryRouteResult(route="original", query=question)
 
+    async def contextualize(self, question: str, history: list[Message]) -> str:
+        """基于多轮历史把当前问题改写成独立完整问句。"""
+        history_text = _format_history_text(history)
+        if not history_text:
+            return question
+        try:
+            messages = build_contextualize_messages(
+                question=question, history=history_text
+            )
+            response = await get_chat_model().ainvoke(messages)
+            rewritten = _extract_text(response.content).strip()
+            return rewritten or question
+        except Exception:
+            logger.exception(
+                "contextualize 调用失败，降级回原问题：question=%r", question
+            )
+            return question
+
     async def optimize(self, question: str, multi_query_count: int) -> QueryRouteResult:
         """完整 4 选 1：先判定路由，再分发到 apply_route。任何一步失败降级 original。"""
         try:
@@ -110,6 +130,27 @@ def get_query_rewriter() -> QueryRewriter:
     if _rewriter is None:
         _rewriter = QueryRewriter()
     return _rewriter
+
+
+_ROLE_LABEL: dict[MessageRole, str] = {
+    MessageRole.USER: "用户",
+    MessageRole.ASSISTANT: "助手",
+    MessageRole.SYSTEM: "系统",
+}
+
+
+def _format_history_text(history: list[Message]) -> str:
+    """把历史 Message 压成给 contextualize prompt 看的纯文本。
+
+    只取 user / assistant，过滤 system；空内容跳过，避免把空消息塞进 prompt 浪费 token。
+    """
+    lines: list[str] = []
+    for msg in history:
+        role_label = _ROLE_LABEL.get(msg.role)
+        if not role_label or not msg.content.strip():
+            continue
+        lines.append(f"{role_label}: {msg.content.strip()}")
+    return "\n".join(lines)
 
 
 def _extract_text(content: str | list[str | dict]) -> str:
