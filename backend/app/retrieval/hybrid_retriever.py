@@ -1,3 +1,4 @@
+from langsmith import traceable
 """混合检索器: 向量 + 中文全文双路召回 + RRF 融合。
 
 为什么用 RRF 而不是直接相加两路分数:
@@ -31,6 +32,7 @@ class HybridRetriever:
     - 检索过程纯只读，与调用方的写事务 (落库 user / assistant 消息) 天然解耦
     """
 
+    @traceable(name="HybridRetriever.search", run_type="retriever")
     async def search(
         self,
         query: str,

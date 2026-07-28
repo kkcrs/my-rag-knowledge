@@ -1,3 +1,4 @@
+from langsmith import traceable
 import dataclasses
 from typing import Any
 import httpx
@@ -24,6 +25,7 @@ class Reranker:
             self._client = httpx.AsyncClient(timeout=settings.rerank_timeout)
         return self._client
 
+    @traceable(name="Reranker.rerank", run_type="tool")
     async def rerank(
         self, query: str, candidates: list[RetrievedChunk]
     ) -> list[RetrievedChunk]:

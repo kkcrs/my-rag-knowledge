@@ -1,3 +1,4 @@
+from langsmith import traceable
 from dataclasses import dataclass, field
 import enum
 from uuid import UUID
@@ -44,6 +45,7 @@ class VectorRetriever:
     def __init__(self, session: AsyncSession) -> None:
         self.chunk_repo = DocumentChunkRepository(session)
 
+    @traceable(name="VectorRetriever.search", run_type="retriever")
     async def search(self, query: str, top_k: int) -> list[RetrievedChunk]:
         # 单 query 走 embed_query，DashScope 单条调用更直接
         embedding = await get_embeddings().aembed_query(query)

@@ -22,6 +22,7 @@ import { conversationsQueryKey } from '@/api/queryKeys'
 import { AgentStepsPanel } from '@/components/AgentStepsPanel'
 import { gfmComponents } from '@/components/markdownComponents'
 import { CitationList, type CitationListHandle } from '@/components/CitationList'
+import { TraceIdPanel } from '@/components/TraceIdPanel'
 import { ConversationSidebar } from '@/components/ConversationSidebar'
 import { QueryRoutePanel } from '@/components/QueryRoutePanel'
 import { formatApiError } from '@/utils/errors'
@@ -46,6 +47,8 @@ interface UiMessage {
     agentSteps?: AgentStep[] | null
     verifyResult?: VerifyResultRead | null
     refused?: boolean
+    traceId?: string | null
+    traceUrl?: string | null
     status?: AssistantStatus
     error?: string | null
 }
@@ -61,6 +64,8 @@ function fromServerMessage(message: MessageRead): UiMessage {
         verifyResult: message.verify_result ?? null,
         // 历史消息：直接按"内容是否等于固定拒答文案"判定
         refused: message.role === 'assistant' && message.content === REFUSAL_ANSWER,
+        traceId: message.trace_id ?? null,
+        traceUrl: message.trace_url ?? null,
         status: 'done',
     }
 }
@@ -210,6 +215,13 @@ export function ChatPage() {
                     switch (event.type) {
                         case 'start':
                             updatePendingUserId(event.userMessageId)
+                            if (event.traceId) {
+                                updateAssistant((previous) => ({
+                                    ...previous,
+                                    traceId: event.traceId ?? null,
+                                    traceUrl: event.traceUrl ?? null,
+                                }))
+                            }
                             break
                         case 'query_route':
                             updateAssistant((previous) => ({
@@ -463,6 +475,9 @@ function MessageBubble({ message }: MessageBubbleProps) {
                 ) : null}
                 {!isUser && message.agentSteps && message.agentSteps.length > 0 ? (
                     <AgentStepsPanel steps={message.agentSteps} />
+                ) : null}
+                {!isUser ? (
+                    <TraceIdPanel traceId={message.traceId} traceUrl={message.traceUrl} />
                 ) : null}
                 {!isUser && message.citations.length > 0 ? (
                     <CitationList

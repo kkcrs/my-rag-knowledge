@@ -90,12 +90,23 @@ class Settings(BaseSettings):
 
     # ===== 答案校验 (第 8 章) =====
     # 关掉后跳过 verify_answer 调用，方便对比有/无引用支撑校验的效果
+    # ===== LangSmith 可观测性 =====
+    langsmith_tracing: bool = False
+    langsmith_api_key: str = ""
+    langsmith_project: str = "rag-knowledge-base"
+    langsmith_endpoint: str = "https://api.smith.langchain.com"
+    langsmith_run_url_prefix: str = ""
+
     verify_answer_enabled: bool = True
 
     @property
     def effective_rerank_api_key(self) -> str:
-        """rerank_api_key 留空时回落到 chat_api_key，二者本来就是同一份 DashScope key。"""
         return self.rerank_api_key or self.chat_api_key
+
+    @property
+    def observability_enabled(self) -> bool:
+        """LangSmith 实际生效条件：开关打开 + key 已配置。"""
+        return bool(self.langsmith_tracing and self.langsmith_api_key)
 
     @property
     def cos_configured(self) -> bool:

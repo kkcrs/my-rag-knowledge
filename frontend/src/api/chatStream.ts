@@ -4,6 +4,8 @@ import type { AgentStep, CitationRead, QueryRouteRead } from '@/client/types.gen
 export interface ChatStartEvent {
     type: 'start'
     userMessageId: string
+    traceId?: string | null
+    traceUrl?: string | null
 }
 
 export interface ChatQueryRouteEvent {
@@ -96,6 +98,8 @@ export async function streamChat({
                     onEvent({
                         type: 'start',
                         userMessageId: data.user_message_id,
+                        traceId: data.trace_id ?? null,
+                        traceUrl: data.trace_url ?? null,
                     })
                     break
                 case 'query_route':

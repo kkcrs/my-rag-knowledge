@@ -15,7 +15,9 @@ from app.db.repositories.citation_repo import AnswerCitationRepository
 from app.db.session import AsyncSessionLocal
 from app.llm.answer_verifier import VerifyResult, get_answer_verifier
 from app.llm.prompts import REFUSAL_ANSWER
+from app.core.observability import build_trace_url, get_current_trace_id
 from app.workflows.graph import get_rag_graph
+from langsmith import traceable
 from app.workflows.nodes import load_context, stream_generate
 from app.workflows.rag_state import RAGState
 
@@ -125,6 +127,7 @@ class ChatService:
         await self.session.commit()
 
     # 注意缩进，这些都是 ChatService 类里的函数
+    @traceable(name="ChatService.stream_answer", run_type="chain")
     async def stream_answer(
         self, conversation_id: UUID, question: str
     ) -> AsyncIterator[dict]:
@@ -143,9 +146,11 @@ class ChatService:
 
         async with AsyncSessionLocal() as session:
             try:
+                trace_id = get_current_trace_id()
                 state: RAGState = {
                     "conversation_id": conversation_id,
                     "question": question,
+                    "trace_id": trace_id,
                 }
 
                 # 1. 加载上下文（仅历史消息，本轮 user 消息尚未入库）。
@@ -164,7 +169,11 @@ class ChatService:
 
                 yield {
                     "event": "message_start",
-                    "data": {"user_message_id": str(state["user_message_id"])},
+                    "data": {
+                        "user_message_id": str(state["user_message_id"]),
+                        "trace_id": trace_id,
+                        "trace_url": build_trace_url(trace_id),
+                    },
                 }
 
                 yield {
@@ -332,6 +341,7 @@ class ChatService:
                     or (verify_result is not None and verify_result.verified)
                 )
             ),
+            "trace_id": state.get("trace_id"),
         }
         if verify_result is not None:
             extra_metadata["verify_result"] = _build_verify_payload(

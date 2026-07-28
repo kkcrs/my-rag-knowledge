@@ -49,3 +49,5 @@ class RAGState(TypedDict, total=False):
     # chat_service 落库后回写
     user_message_id: UUID
     assistant_message_id: UUID
+    # LangSmith trace_id: 未启用观测 / 取不到 run tree 时为 None
+    trace_id: str | None

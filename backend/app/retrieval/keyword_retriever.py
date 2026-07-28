@@ -1,3 +1,4 @@
+from langsmith import traceable
 """关键词检索器: query -> tsquery -> ts_rank Top-K。
 
 接口与 VectorRetriever 对齐 (都暴露 `search(query, top_k)`)，
@@ -17,6 +18,7 @@ class KeywordRetriever:
     def __init__(self, session: AsyncSession) -> None:
         self.chunk_repo = DocumentChunkRepository(session)
 
+    @traceable(name="KeywordRetriever.search", run_type="retriever")
     async def search(self, query: str, top_k: int) -> list[RetrievedChunk]:
         rows = await self.chunk_repo.keyword_search(query, top_k)
         return [
