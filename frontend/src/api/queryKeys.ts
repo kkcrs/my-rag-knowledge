@@ -6,3 +6,17 @@
  */
 
 export const conversationsQueryKey = ['conversations'] as const
+
+export const evaluationDatasetsKey = ['evaluations', 'datasets'] as const
+export const evaluationRunsKey = ['evaluations', 'runs'] as const
+
+export function evaluationRunKey(runId: string) {
+  return ['evaluations', 'runs', runId] as const
+}
+
+export function evaluationItemsKey(
+  runId: string,
+  filters: { badCaseOnly: boolean; category: string | null; page: number },
+) {
+  return ['evaluations', 'items', runId, filters] as const
+}

@@ -1,5 +1,5 @@
 import { Layout, Menu } from 'antd'
-import { DashboardOutlined, FileTextOutlined, MessageOutlined } from '@ant-design/icons'
+import { DashboardOutlined, ExperimentOutlined, FileTextOutlined, MessageOutlined } from '@ant-design/icons'
 import { Link, Outlet, useLocation } from 'react-router-dom'
 
 const { Header, Sider, Content } = Layout
@@ -18,12 +18,19 @@ const menuItems = [
     label: <Link to="/chat">知识问答</Link>,
     disabled: false,
   },
+  {
+    key: '/evaluation',
+    icon: <ExperimentOutlined />,
+    label: <Link to="/evaluation">评测分析</Link>,
+    disabled: false,
+  },
 ]
 
 function resolveSelectedKey(pathname: string): string {
   // /documents/xx 也保持“文档管理”高亮
   if (pathname.startsWith('/documents')) return '/documents' 
-  if (pathname.startsWith('/chat')) return '/chat' 
+  if (pathname.startsWith('/chat')) return '/chat'
+  if (pathname.startsWith('/evaluation')) return '/evaluation' 
   return '/'
 }
 

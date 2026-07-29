@@ -1,9 +1,12 @@
 import hashlib
 import json
+import time
+from collections.abc import AsyncIterator
+from dataclasses import dataclass, field
+from uuid import UUID
 
 from sqlalchemy.ext.asyncio import AsyncSession
-from app.retrieval.vector_retriever import RetrievedChunk
-from uuid import UUID
+
 from app.core.config import settings
 from app.core.exceptions import NotFoundError
 from app.db.models import Conversation, Message
@@ -16,6 +19,7 @@ from app.db.session import AsyncSessionLocal
 from app.llm.answer_verifier import VerifyResult, get_answer_verifier
 from app.llm.prompts import REFUSAL_ANSWER
 from app.core.observability import build_trace_url, get_current_trace_id
+from app.retrieval.vector_retriever import RetrievedChunk
 from app.workflows.graph import get_rag_graph
 from langsmith import traceable
 from app.workflows.nodes import load_context, stream_generate
@@ -79,6 +83,22 @@ def _serialize_agent_steps(state: RAGState) -> list[dict]:
     return [dict(step) for step in state.get("agent_steps", [])]
 
 
+
+@dataclass(frozen=True)
+class EvaluationAnswer:
+    """评测专用：跑一遍 RAG 拿到的非流式结果快照。"""
+
+    answer: str
+    refused: bool
+    chunks: list[RetrievedChunk]
+    query_route: dict
+    agent_steps: list[dict]
+    verify_result: VerifyResult | None
+    trace_id: str | None
+    latency_ms: int
+    first_token_latency_ms: int | None
+    error_message: str | None = None
+    citations: list[dict] = field(default_factory=list)
 class ChatService:
     """注意：
 
@@ -258,7 +278,7 @@ class ChatService:
                         chunks=list(state.get("retrieved_chunks", [])),
                     )
                     replacement = REFUSAL_ANSWER if not verify_result.verified else None
-                    if not verify_result.verified:
+                    if verify_result is not None and not verify_result.verified:
                         state["answer"] = REFUSAL_ANSWER
                         state["refused"] = True
                     yield {
@@ -295,6 +315,87 @@ class ChatService:
                 }
 
         # 注意缩进，这些都是 ChatService 类里的函数
+
+    @traceable(name="ChatService.answer_for_evaluation", run_type="chain")
+    async def answer_for_evaluation(self, question: str) -> EvaluationAnswer:
+        """跑一遍完整 RAG 拿非流式结果，用于离线评测。"""
+        started_at = time.perf_counter()
+        trace_id = get_current_trace_id()
+
+        state: RAGState = {
+            "conversation_id": UUID(int=0),
+            "question": question,
+            "chat_history": [],
+            "trace_id": trace_id,
+        }
+
+        try:
+            final_state = await get_rag_graph().ainvoke(state)
+            state.update(final_state)  # type: ignore[arg-type]
+
+            verify_result: VerifyResult | None = None
+            first_token_latency_ms: int | None = None
+
+            if state.get("refused"):
+                answer = state["answer"]
+            else:
+                parts: list[str] = []
+                async for delta in stream_generate(state):
+                    if first_token_latency_ms is None:
+                        first_token_latency_ms = int(
+                            (time.perf_counter() - started_at) * 1000
+                        )
+                    parts.append(delta)
+                answer = "".join(parts)
+                state["answer"] = answer
+
+            if settings.verify_answer_enabled:
+                verify_result = await get_answer_verifier().verify(
+                    question=question,
+                    answer=answer,
+                    chunks=list(state.get("retrieved_chunks", [])),
+                )
+
+            if not verify_result.verified:
+                answer = REFUSAL_ANSWER
+                state["answer"] = answer
+                state["refused"] = True
+
+            chunks = list(state.get("retrieved_chunks", []))
+            refused = bool(state.get("refused"))
+            citations = (
+                []
+                if refused
+                else [_serialize_citation(c, ordinal=i) for i, c in enumerate(chunks, 1)]
+            )
+
+            return EvaluationAnswer(
+                answer=answer,
+                refused=refused,
+                chunks=chunks,
+                query_route=_build_query_route_payload(state),
+                agent_steps=_serialize_agent_steps(state),
+                verify_result=verify_result,
+                trace_id=trace_id,
+                latency_ms=int((time.perf_counter() - started_at) * 1000),
+                first_token_latency_ms=first_token_latency_ms,
+                citations=citations,
+            )
+
+        except Exception as exc:
+            logger.exception("evaluation answer failed: question=%r", question)
+            return EvaluationAnswer(
+                answer="",
+                refused=False,
+                chunks=[],
+                query_route=_build_query_route_payload(state),
+                agent_steps=_serialize_agent_steps(state),
+                verify_result=None,
+                trace_id=trace_id,
+                latency_ms=int((time.perf_counter() - started_at) * 1000),
+                first_token_latency_ms=None,
+                error_message=str(exc).strip() or exc.__class__.__name__,
+            )
     async def _persist_user_message(
         self, state: RAGState, session: AsyncSession
     ) -> None:
