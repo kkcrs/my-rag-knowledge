@@ -2,7 +2,7 @@
 
 import { type Client, formDataBodySerializer, type Options as Options2, type TDataShape } from './client';
 import { client } from './client.gen';
-import type { CreateConversationData, CreateConversationErrors, CreateConversationResponses, CreateEvaluationRunData, CreateEvaluationRunErrors, CreateEvaluationRunResponses, DeleteConversationData, DeleteConversationErrors, DeleteConversationResponses, DeleteDocumentData, DeleteDocumentErrors, DeleteDocumentResponses, DeleteEvaluationRunData, DeleteEvaluationRunErrors, DeleteEvaluationRunResponses, DownloadDocumentData, DownloadDocumentErrors, DownloadDocumentResponses, GetConversationData, GetConversationErrors, GetConversationResponses, GetDocumentChunkData, GetDocumentChunkErrors, GetDocumentChunkResponses, GetDocumentData, GetDocumentErrors, GetDocumentResponses, GetEvaluationItemData, GetEvaluationItemErrors, GetEvaluationItemResponses, GetEvaluationRunData, GetEvaluationRunErrors, GetEvaluationRunResponses, HealthAppData, HealthAppResponses, HealthCosData, HealthCosResponses, HealthDbData, HealthDbResponses, ListConversationsData, ListConversationsErrors, ListConversationsResponses, ListDocumentChunksData, ListDocumentChunksErrors, ListDocumentChunksResponses, ListDocumentsData, ListDocumentsErrors, ListDocumentsResponses, ListEvaluationDatasetsData, ListEvaluationDatasetsResponses, ListEvaluationItemsData, ListEvaluationItemsErrors, ListEvaluationItemsResponses, ListEvaluationRunsData, ListEvaluationRunsErrors, ListEvaluationRunsResponses, RetryDocumentData, RetryDocumentErrors, RetryDocumentResponses, StreamChatData, StreamChatErrors, StreamChatResponses, UpdateEvaluationItemData, UpdateEvaluationItemErrors, UpdateEvaluationItemResponses, UploadDocumentData, UploadDocumentErrors, UploadDocumentResponses } from './types.gen';
+import type { AssignUserRolesData, AssignUserRolesErrors, AssignUserRolesResponses, CreateConversationData, CreateConversationErrors, CreateConversationResponses, CreateEvaluationRunData, CreateEvaluationRunErrors, CreateEvaluationRunResponses, CreateRoleData, CreateRoleErrors, CreateRoleResponses, CreateUserData, CreateUserErrors, CreateUserResponses, DeleteConversationData, DeleteConversationErrors, DeleteConversationResponses, DeleteDocumentData, DeleteDocumentErrors, DeleteDocumentResponses, DeleteEvaluationRunData, DeleteEvaluationRunErrors, DeleteEvaluationRunResponses, DeleteRoleData, DeleteRoleErrors, DeleteRoleResponses, DeleteUserData, DeleteUserErrors, DeleteUserResponses, DownloadDocumentData, DownloadDocumentErrors, DownloadDocumentResponses, GetConversationData, GetConversationErrors, GetConversationResponses, GetCurrentUserData, GetCurrentUserErrors, GetCurrentUserResponses, GetDocumentChunkData, GetDocumentChunkErrors, GetDocumentChunkResponses, GetDocumentData, GetDocumentErrors, GetDocumentResponses, GetEvaluationItemData, GetEvaluationItemErrors, GetEvaluationItemResponses, GetEvaluationRunData, GetEvaluationRunErrors, GetEvaluationRunResponses, HealthAppData, HealthAppResponses, HealthCosData, HealthCosResponses, HealthDbData, HealthDbResponses, ListConversationsData, ListConversationsErrors, ListConversationsResponses, ListDocumentChunksData, ListDocumentChunksErrors, ListDocumentChunksResponses, ListDocumentsData, ListDocumentsErrors, ListDocumentsResponses, ListEvaluationDatasetsData, ListEvaluationDatasetsErrors, ListEvaluationDatasetsResponses, ListEvaluationItemsData, ListEvaluationItemsErrors, ListEvaluationItemsResponses, ListEvaluationRunsData, ListEvaluationRunsErrors, ListEvaluationRunsResponses, ListRolesData, ListRolesErrors, ListRolesResponses, ListUsersData, ListUsersErrors, ListUsersResponses, LoginData, LoginErrors, LoginResponses, RetryDocumentData, RetryDocumentErrors, RetryDocumentResponses, StreamChatData, StreamChatErrors, StreamChatResponses, UpdateDocumentPermissionTagsData, UpdateDocumentPermissionTagsErrors, UpdateDocumentPermissionTagsResponses, UpdateEvaluationItemData, UpdateEvaluationItemErrors, UpdateEvaluationItemResponses, UpdateRoleData, UpdateRoleErrors, UpdateRoleResponses, UpdateUserData, UpdateUserErrors, UpdateUserResponses, UploadDocumentData, UploadDocumentErrors, UploadDocumentResponses } from './types.gen';
 
 export type Options<TData extends TDataShape = TDataShape, ThrowOnError extends boolean = boolean, TResponse = unknown> = Options2<TData, ThrowOnError, TResponse> & {
     /**
@@ -17,6 +17,23 @@ export type Options<TData extends TDataShape = TDataShape, ThrowOnError extends 
      */
     meta?: Record<string, unknown>;
 };
+
+/**
+ * Login
+ */
+export const login = <ThrowOnError extends boolean = false>(options: Options<LoginData, ThrowOnError>) => (options.client ?? client).post<LoginResponses, LoginErrors, ThrowOnError>({
+    url: '/api/auth/login',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+    }
+});
+
+/**
+ * Get Me
+ */
+export const getCurrentUser = <ThrowOnError extends boolean = false>(options?: Options<GetCurrentUserData, ThrowOnError>) => (options?.client ?? client).get<GetCurrentUserResponses, GetCurrentUserErrors, ThrowOnError>({ url: '/api/auth/me', ...options });
 
 /**
  * Health
@@ -40,8 +57,6 @@ export const listDocuments = <ThrowOnError extends boolean = false>(options?: Op
 
 /**
  * Upload Document
- *
- * 上传文档：写入 COS、落库后立即返回，解析与向量化通过 BackgroundTasks 异步进行。
  */
 export const uploadDocument = <ThrowOnError extends boolean = false>(options: Options<UploadDocumentData, ThrowOnError>) => (options.client ?? client).post<UploadDocumentResponses, UploadDocumentErrors, ThrowOnError>({
     ...formDataBodySerializer,
@@ -64,21 +79,6 @@ export const deleteDocument = <ThrowOnError extends boolean = false>(options: Op
 export const getDocument = <ThrowOnError extends boolean = false>(options: Options<GetDocumentData, ThrowOnError>) => (options.client ?? client).get<GetDocumentResponses, GetDocumentErrors, ThrowOnError>({ url: '/api/documents/{document_id}', ...options });
 
 /**
- * Retry Document
- */
-export const retryDocument = <ThrowOnError extends boolean = false>(options: Options<RetryDocumentData, ThrowOnError>) => (options.client ?? client).post<RetryDocumentResponses, RetryDocumentErrors, ThrowOnError>({ url: '/api/documents/{document_id}/retry', ...options });
-
-/**
- * Download Document
- *
- * 返回文档原始字节。
- *
- * - PDF / HTML / Markdown: 可在浏览器内联预览
- * - DOCX: 浏览器无法渲染, 强制 attachment
- */
-export const downloadDocument = <ThrowOnError extends boolean = false>(options: Options<DownloadDocumentData, ThrowOnError>) => (options.client ?? client).get<DownloadDocumentResponses, DownloadDocumentErrors, ThrowOnError>({ url: '/api/documents/{document_id}/file', ...options });
-
-/**
  * List Document Chunks
  */
 export const listDocumentChunks = <ThrowOnError extends boolean = false>(options: Options<ListDocumentChunksData, ThrowOnError>) => (options.client ?? client).get<ListDocumentChunksResponses, ListDocumentChunksErrors, ThrowOnError>({ url: '/api/documents/{document_id}/chunks', ...options });
@@ -89,7 +89,29 @@ export const listDocumentChunks = <ThrowOnError extends boolean = false>(options
 export const getDocumentChunk = <ThrowOnError extends boolean = false>(options: Options<GetDocumentChunkData, ThrowOnError>) => (options.client ?? client).get<GetDocumentChunkResponses, GetDocumentChunkErrors, ThrowOnError>({ url: '/api/documents/{document_id}/chunks/{chunk_id}', ...options });
 
 /**
- * 按更新时间倒序分页列出所有会话
+ * Download Document
+ */
+export const downloadDocument = <ThrowOnError extends boolean = false>(options: Options<DownloadDocumentData, ThrowOnError>) => (options.client ?? client).get<DownloadDocumentResponses, DownloadDocumentErrors, ThrowOnError>({ url: '/api/documents/{document_id}/file', ...options });
+
+/**
+ * Retry Document
+ */
+export const retryDocument = <ThrowOnError extends boolean = false>(options: Options<RetryDocumentData, ThrowOnError>) => (options.client ?? client).post<RetryDocumentResponses, RetryDocumentErrors, ThrowOnError>({ url: '/api/documents/{document_id}/retry', ...options });
+
+/**
+ * Update Permission Tags
+ */
+export const updateDocumentPermissionTags = <ThrowOnError extends boolean = false>(options: Options<UpdateDocumentPermissionTagsData, ThrowOnError>) => (options.client ?? client).patch<UpdateDocumentPermissionTagsResponses, UpdateDocumentPermissionTagsErrors, ThrowOnError>({
+    url: '/api/documents/{document_id}/permission-tags',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+    }
+});
+
+/**
+ * List Conversations
  */
 export const listConversations = <ThrowOnError extends boolean = false>(options?: Options<ListConversationsData, ThrowOnError>) => (options?.client ?? client).get<ListConversationsResponses, ListConversationsErrors, ThrowOnError>({ url: '/api/conversations', ...options });
 
@@ -112,18 +134,11 @@ export const deleteConversation = <ThrowOnError extends boolean = false>(options
 
 /**
  * Get Conversation
- *
- * 返回会话本身 + 全部历史消息（含引用）。
  */
 export const getConversation = <ThrowOnError extends boolean = false>(options: Options<GetConversationData, ThrowOnError>) => (options.client ?? client).get<GetConversationResponses, GetConversationErrors, ThrowOnError>({ url: '/api/conversations/{conversation_id}', ...options });
 
 /**
  * Stream Chat
- *
- * SSE 流式问答。
- *
- * 事件协议：message_start → citations → token...(多次) → message_end；
- * 任何阶段出错改 yield error。前端用 @microsoft/fetch-event-source 接。
  */
 export const streamChat = <ThrowOnError extends boolean = false>(options: Options<StreamChatData, ThrowOnError, unknown>) => (options.client ?? client).sse.post<StreamChatResponses, StreamChatErrors, ThrowOnError>({
     url: '/api/conversations/{conversation_id}/chat',
@@ -135,9 +150,89 @@ export const streamChat = <ThrowOnError extends boolean = false>(options: Option
 });
 
 /**
+ * List Users
+ */
+export const listUsers = <ThrowOnError extends boolean = false>(options?: Options<ListUsersData, ThrowOnError>) => (options?.client ?? client).get<ListUsersResponses, ListUsersErrors, ThrowOnError>({ url: '/api/users', ...options });
+
+/**
+ * Create User
+ */
+export const createUser = <ThrowOnError extends boolean = false>(options: Options<CreateUserData, ThrowOnError>) => (options.client ?? client).post<CreateUserResponses, CreateUserErrors, ThrowOnError>({
+    url: '/api/users',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+    }
+});
+
+/**
+ * Delete User
+ */
+export const deleteUser = <ThrowOnError extends boolean = false>(options: Options<DeleteUserData, ThrowOnError>) => (options.client ?? client).delete<DeleteUserResponses, DeleteUserErrors, ThrowOnError>({ url: '/api/users/{user_id}', ...options });
+
+/**
+ * Update User
+ */
+export const updateUser = <ThrowOnError extends boolean = false>(options: Options<UpdateUserData, ThrowOnError>) => (options.client ?? client).patch<UpdateUserResponses, UpdateUserErrors, ThrowOnError>({
+    url: '/api/users/{user_id}',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+    }
+});
+
+/**
+ * Assign User Roles
+ */
+export const assignUserRoles = <ThrowOnError extends boolean = false>(options: Options<AssignUserRolesData, ThrowOnError>) => (options.client ?? client).put<AssignUserRolesResponses, AssignUserRolesErrors, ThrowOnError>({
+    url: '/api/users/{user_id}/roles',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+    }
+});
+
+/**
+ * List Roles
+ */
+export const listRoles = <ThrowOnError extends boolean = false>(options?: Options<ListRolesData, ThrowOnError>) => (options?.client ?? client).get<ListRolesResponses, ListRolesErrors, ThrowOnError>({ url: '/api/roles', ...options });
+
+/**
+ * Create Role
+ */
+export const createRole = <ThrowOnError extends boolean = false>(options: Options<CreateRoleData, ThrowOnError>) => (options.client ?? client).post<CreateRoleResponses, CreateRoleErrors, ThrowOnError>({
+    url: '/api/roles',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+    }
+});
+
+/**
+ * Delete Role
+ */
+export const deleteRole = <ThrowOnError extends boolean = false>(options: Options<DeleteRoleData, ThrowOnError>) => (options.client ?? client).delete<DeleteRoleResponses, DeleteRoleErrors, ThrowOnError>({ url: '/api/roles/{role_id}', ...options });
+
+/**
+ * Update Role
+ */
+export const updateRole = <ThrowOnError extends boolean = false>(options: Options<UpdateRoleData, ThrowOnError>) => (options.client ?? client).patch<UpdateRoleResponses, UpdateRoleErrors, ThrowOnError>({
+    url: '/api/roles/{role_id}',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+    }
+});
+
+/**
  * 列出可用评测集
  */
-export const listEvaluationDatasets = <ThrowOnError extends boolean = false>(options?: Options<ListEvaluationDatasetsData, ThrowOnError>) => (options?.client ?? client).get<ListEvaluationDatasetsResponses, unknown, ThrowOnError>({ url: '/api/evaluations/datasets', ...options });
+export const listEvaluationDatasets = <ThrowOnError extends boolean = false>(options?: Options<ListEvaluationDatasetsData, ThrowOnError>) => (options?.client ?? client).get<ListEvaluationDatasetsResponses, ListEvaluationDatasetsErrors, ThrowOnError>({ url: '/api/evaluations/datasets', ...options });
 
 /**
  * 按创建时间倒序列出评测 run

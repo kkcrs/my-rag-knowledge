@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
+import { useAuthStore } from '@/stores/authStore'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import {
   Alert,
@@ -275,7 +276,12 @@ export function DocumentDetailPage() {
   
     useEffect(() => {
       let cancelled = false
-      fetch(url)
+      const headers: Record<string, string> = {}
+      const token = useAuthStore.getState().token
+      if (token) {
+        headers.Authorization = `Bearer ${token}`
+      }
+      fetch(url, { headers })
         .then(async (r) => {
           if (!r.ok) throw new Error(`${r.status} ${r.statusText}`)
           return r.text()

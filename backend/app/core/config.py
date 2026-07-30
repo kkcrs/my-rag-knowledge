@@ -97,6 +97,14 @@ class Settings(BaseSettings):
     langsmith_endpoint: str = "https://api.smith.langchain.com"
     langsmith_run_url_prefix: str = ""
 
+    # ===== 认证 =====
+    jwt_secret: str = ""
+    jwt_algorithm: str = "HS256"
+    jwt_expire_minutes: int = 1440
+    default_admin_username: str = "admin"
+    default_admin_password: str = "admin"
+    default_admin_display_name: str = "管理员"
+
     verify_answer_enabled: bool = True
 
     @property

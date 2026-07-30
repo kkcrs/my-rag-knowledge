@@ -39,3 +39,15 @@ class ValidationError(AppException):
     code = "validation_error"
     message = "请求参数验证失败"
     http_status = HTTPStatus.BAD_REQUEST
+
+
+class UnauthorizedError(AppException):
+    code = "unauthorized"
+    message = "请先登录"
+    http_status = HTTPStatus.UNAUTHORIZED
+
+
+class ConflictError(AppException):
+    code = "conflict"
+    message = "资源冲突"
+    http_status = HTTPStatus.CONFLICT

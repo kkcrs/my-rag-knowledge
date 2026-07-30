@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { useAuthStore } from '@/stores/authStore'
 import type { ComponentProps, KeyboardEvent } from 'react'
 import {
     Alert,
@@ -32,7 +33,7 @@ const { Sider, Content } = Layout
 const { TextArea } = Input
 const { Title, Paragraph, Text } = Typography
 
-const STORAGE_KEY = 'rag.chat.conversation_id'
+const STORAGE_KEY_PREFIX = 'rag.chat.conversation_id'
 /** 与后端 REFUSAL_ANSWER 文案一致；用来判定历史消息是否拒答 */
 const REFUSAL_ANSWER = '抱歉，知识库中没有找到与该问题相关的可靠依据。'
 
@@ -72,8 +73,10 @@ function fromServerMessage(message: MessageRead): UiMessage {
 
 export function ChatPage() {
     const queryClient = useQueryClient()
+    const userId = useAuthStore((s) => s.user?.id)
+    const storageKey = `${STORAGE_KEY_PREFIX}.${userId}`
     const [conversationId, setConversationId] = useState<string | null>(() =>
-        localStorage.getItem(STORAGE_KEY),
+        localStorage.getItem(storageKey),
     )
     const [draft, setDraft] = useState('')
     // 流式过程中的临时消息只保存在前端，结束后由历史接口返回正式消息。
@@ -88,7 +91,7 @@ export function ChatPage() {
             return response.data!
         },
         onSuccess: async (conversation) => {
-            localStorage.setItem(STORAGE_KEY, conversation.id)
+            localStorage.setItem(storageKey, conversation.id)
             setConversationId(conversation.id)
             setPendingMessages([])
             queryClient.removeQueries({ queryKey: ['conversation'] })
@@ -142,7 +145,7 @@ export function ChatPage() {
         abortRef.current?.abort()
         setPendingMessages([])
         setIsStreaming(false)
-        localStorage.setItem(STORAGE_KEY, id)
+        localStorage.setItem(storageKey, id)
         setConversationId(id)
     }
 
@@ -151,7 +154,7 @@ export function ChatPage() {
         abortRef.current?.abort()
         setPendingMessages([])
         setIsStreaming(false)
-        localStorage.removeItem(STORAGE_KEY)
+        localStorage.removeItem(storageKey)
         setConversationId(null)
         queryClient.removeQueries({ queryKey: ['conversation', deletedId] })
     }

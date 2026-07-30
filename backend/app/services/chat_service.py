@@ -13,11 +13,15 @@ from app.db.models import Conversation, Message
 from app.db.repositories.conversation_repo import ConversationRepository
 from collections.abc import AsyncIterator
 from app.core.logging import get_logger
-from app.db.models import AnswerCitation, Conversation, Message
+from app.db.models import AnswerCitation, Conversation, Message, User
 from app.db.repositories.citation_repo import AnswerCitationRepository
 from app.db.session import AsyncSessionLocal
 from app.llm.answer_verifier import VerifyResult, get_answer_verifier
 from app.llm.prompts import REFUSAL_ANSWER
+from app.services.permission_service import (
+    WILDCARD_PERMISSION_TAG,
+    compute_user_permission_tags,
+)
 from app.core.observability import build_trace_url, get_current_trace_id
 from app.retrieval.vector_retriever import RetrievedChunk
 from app.workflows.graph import get_rag_graph
@@ -110,38 +114,39 @@ class ChatService:
         self.session = session
 
     # 注意缩进，这些都是 ChatService 类里的函数
-    async def create_conversation(self, title: str = "新对话") -> Conversation:
+    async def create_conversation(self, title: str = "新对话", *, user_id: UUID | None = None) -> Conversation:
         repo = ConversationRepository(self.session)
         conversation = await repo.create(title=title)
+        if user_id is not None:
+            conversation.user_id = user_id
         await self.session.commit()
         await self.session.refresh(conversation)
         return conversation
 
-    async def get_conversation(self, conversation_id: UUID) -> Conversation:
+    async def get_conversation(self, conversation_id: UUID, *, user_id: UUID | None = None) -> Conversation:
         repo = ConversationRepository(self.session)
-        conversation = await repo.get(conversation_id)
+        conversation = await repo.get(conversation_id, user_id=user_id)
         if conversation is None:
             raise NotFoundError("会话不存在")
         return conversation
 
     async def list_messages(
-        self, conversation_id: UUID
+        self, conversation_id: UUID, *, user_id: UUID | None = None,
     ) -> tuple[Conversation, list[Message]]:
-        # 先校验会话存在，避免"空会话"和"会话不存在"被混淆
-        conversation = await self.get_conversation(conversation_id)
+        conversation = await self.get_conversation(conversation_id, user_id=user_id)
         repo = ConversationRepository(self.session)
         messages = await repo.list_messages(conversation_id)
         return conversation, messages
 
     async def list_conversations(
-        self, page: int, page_size: int
+        self, page: int, page_size: int, *, user_id: UUID | None = None
     ) -> tuple[list[tuple[Conversation, int]], int]:
         repo = ConversationRepository(self.session)
-        return await repo.list_page(page=page, page_size=page_size)
+        return await repo.list_page(page=page, page_size=page_size, user_id=user_id)
 
-    async def delete_conversation(self, conversation_id: UUID) -> None:
+    async def delete_conversation(self, conversation_id: UUID, *, user_id: UUID | None = None) -> None:
         repo = ConversationRepository(self.session)
-        deleted = await repo.delete(conversation_id)
+        deleted = await repo.delete(conversation_id, user_id=user_id)
         if not deleted:
             raise NotFoundError("会话不存在")
         await self.session.commit()
@@ -149,20 +154,11 @@ class ChatService:
     # 注意缩进，这些都是 ChatService 类里的函数
     @traceable(name="ChatService.stream_answer", run_type="chain")
     async def stream_answer(
-        self, conversation_id: UUID, question: str
+        self, conversation_id: UUID, question: str, *, current_user: User,
     ) -> AsyncIterator[dict]:
-        """流式问答 SSE 数据。
-
-        事件协议（与前端约定）：
-            message_start → query_route → agent_steps → citations → token...
-                          → [verify_result] → message_end
-        - 拒答路径不发 verify_result（拒答本身已经是终态）
-        - verify_result.verified=False 时携带 replacement_answer，前端按它整段
-          替换流式出来的答案，与 PRD"校验失败 → 拒答替换"对齐
-        任何阶段出错则 yield error 并提前结束。
-        """
-        # 校验会话是否存在 service 自带 session；流式使用独立 session
-        await self.get_conversation(conversation_id)
+        """流式问答 SSE 数据。"""
+        await self.get_conversation(conversation_id, user_id=current_user.id)
+        permissions = compute_user_permission_tags(current_user)
 
         async with AsyncSessionLocal() as session:
             try:
@@ -170,6 +166,7 @@ class ChatService:
                 state: RAGState = {
                     "conversation_id": conversation_id,
                     "question": question,
+                    "permissions": permissions,
                     "trace_id": trace_id,
                 }
 
@@ -326,6 +323,7 @@ class ChatService:
             "conversation_id": UUID(int=0),
             "question": question,
             "chat_history": [],
+            "permissions": [WILDCARD_PERMISSION_TAG],
             "trace_id": trace_id,
         }
 

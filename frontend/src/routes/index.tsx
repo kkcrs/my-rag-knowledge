@@ -6,21 +6,36 @@ import { DocumentDetailPage } from "@/pages/DocumentsDetailPage";
 import { ChatPage } from "@/pages/ChatPage";
 import { EvaluationListPage } from "@/pages/EvaluationListPage";
 import { EvaluationDetailPage } from "@/pages/EvaluationDetailPage";
+import { LoginPage } from "@/pages/LoginPage";
+import { UsersPage } from "@/pages/UsersPage";
+import { RolesPage } from "@/pages/RolesPage";
+import { RequireAuth } from "@/components/RequireAuth";
+import { RequireAdmin } from "@/components/RequireAdmin";
 
 export const router = createBrowserRouter([
+  { path: '/login', element: <LoginPage /> },
   {
-    path: "/",
-    element: <BasicLayout />,
+    path: '/',
+    element: <RequireAuth />,
     children: [
       {
-        index: true,
-        element: <HomePage />,
+        element: <BasicLayout />,
+        children: [
+          { index: true, element: <HomePage /> },
+          { path: 'documents', element: <DocumentsPage /> },
+          { path: 'documents/:id', element: <DocumentDetailPage /> },
+          { path: 'chat', element: <ChatPage /> },
+          {
+            element: <RequireAdmin />,
+            children: [
+              { path: 'evaluation', element: <EvaluationListPage /> },
+              { path: 'evaluation/runs/:id', element: <EvaluationDetailPage /> },
+              { path: 'users', element: <UsersPage /> },
+              { path: 'roles', element: <RolesPage /> },
+            ],
+          },
+        ],
       },
-      {path: 'documents', element: <DocumentsPage/>},
-      {path: 'documents/:id', element: <DocumentDetailPage/>},
-      {path: 'chat', element: <ChatPage/>},
-      {path: 'evaluation', element: <EvaluationListPage/>},
-      {path: 'evaluation/runs/:id', element: <EvaluationDetailPage/>},
     ],
   },
 ]);

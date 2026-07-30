@@ -1,5 +1,6 @@
 import { fetchEventSource } from '@microsoft/fetch-event-source'
 import type { AgentStep, CitationRead, QueryRouteRead } from '@/client/types.gen'
+import { getAuthToken } from '@/stores/authStore'
 
 export interface ChatStartEvent {
     type: 'start'
@@ -74,14 +75,30 @@ export async function streamChat({
 }: StreamChatParams): Promise<void> {
     let completed = false
 
+    const token = getAuthToken()
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' }
+    if (token) {
+        headers.Authorization = `Bearer ${token}`
+    }
+
     await fetchEventSource(`/api/conversations/${conversationId}/chat`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers,
         body: JSON.stringify({ question }),
         signal,
         // 切换浏览器标签页时保持问答流连接。
         openWhenHidden: true,
         async onopen(response) {
+            if (response.status === 401) {
+                import('@/stores/authStore').then(({ useAuthStore }) => {
+                    useAuthStore.getState().logout()
+                    if (window.location.pathname !== '/login') {
+                        const back = window.location.pathname + window.location.search
+                        window.location.replace(`/login?back=${encodeURIComponent(back)}`)
+                    }
+                })
+                throw new FatalSseError('请先登录')
+            }
             if (!response.ok) {
                 const responseText = await response.text().catch(() => '')
                 throw new FatalSseError(responseText || `HTTP ${response.status}`)

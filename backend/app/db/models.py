@@ -6,6 +6,7 @@ from pgvector.sqlalchemy import Vector
 from sqlalchemy import (
     BigInteger,
     Boolean,
+    Column,
     Computed,
     DateTime,
     Float,
@@ -13,10 +14,11 @@ from sqlalchemy import (
     Index,
     Integer,
     String,
+    Table,
     Text,
     func,
 )
-from sqlalchemy.dialects.postgresql import JSONB, TSVECTOR, UUID as PGUID
+from sqlalchemy.dialects.postgresql import ARRAY, JSONB, TSVECTOR, UUID as PGUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.config import settings
@@ -58,6 +60,14 @@ class Document(Base):
         String(32), nullable=False, default=DocumentStatus.UPLOADING
     )
     error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
+    permission_tags: Mapped[list[str]] = mapped_column(
+        ARRAY(String()), nullable=False, default=list, server_default="'{}"
+    )
+    created_by: Mapped[UUID | None] = mapped_column(
+        PGUID(as_uuid=True),
+        ForeignKey("users.id", ondelete="SET NULL"),
+        nullable=True,
+    )
 
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
@@ -67,6 +77,14 @@ class Document(Base):
         server_default=func.now(),
         onupdate=func.now(),
         nullable=False,
+    )
+
+    __table_args__ = (
+        Index(
+            "ix_documents_permission_tags",
+            "permission_tags",
+            postgresql_using="gin",
+        ),
     )
 
     chunks: Mapped[list["DocumentChunk"]] = relationship(
@@ -136,7 +154,12 @@ class Conversation(Base):
 
     id: Mapped[UUID] = mapped_column(PGUID(as_uuid=True), primary_key=True, default=uuid4)
     title: Mapped[str] = mapped_column(String(256), nullable=False, default="新对话")
-    # user_id 后面引入用户体系时再加列
+    user_id: Mapped[UUID | None] = mapped_column(
+        PGUID(as_uuid=True),
+        ForeignKey("users.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
 
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
@@ -220,6 +243,11 @@ class AnswerCitation(Base):
     # 混合检索调试元数据：sources / vector_rank / keyword_rank / *_score / rrf_score
     # 用 JSONB 而非拆列，后续 reranker 章节会继续往里加字段，schema 不稳定时更友好
     retrieval_meta: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+
+
+class UserStatus(str, Enum):
+    ACTIVE = "active"
+    DISABLED = "disabled"
 
 
 class EvaluationRunStatus(str, Enum):
@@ -313,3 +341,69 @@ class EvaluationItem(Base):
     )
 
     run: Mapped[EvaluationRun] = relationship(back_populates="items")
+
+
+user_roles_table = Table(
+    "user_roles",
+    Base.metadata,
+    Column(
+        "user_id",
+        PGUID(as_uuid=True),
+        ForeignKey("users.id", ondelete="CASCADE"),
+        primary_key=True,
+    ),
+    Column(
+        "role_id",
+        PGUID(as_uuid=True),
+        ForeignKey("roles.id", ondelete="CASCADE"),
+        primary_key=True,
+    ),
+)
+
+
+class User(Base):
+    __tablename__ = "users"
+
+    id: Mapped[UUID] = mapped_column(
+        PGUID(as_uuid=True), primary_key=True, default=uuid4
+    )
+    username: Mapped[str] = mapped_column(String(64), nullable=False, unique=True)
+    password_hash: Mapped[str] = mapped_column(String(255), nullable=False)
+    display_name: Mapped[str] = mapped_column(String(128), nullable=False)
+    status: Mapped[UserStatus] = mapped_column(
+        String(16), nullable=False, default=UserStatus.ACTIVE
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        onupdate=func.now(),
+        nullable=False,
+    )
+    roles: Mapped[list["Role"]] = relationship(
+        secondary=user_roles_table,
+        back_populates="users",
+        lazy="selectin",
+    )
+
+
+class Role(Base):
+    __tablename__ = "roles"
+
+    id: Mapped[UUID] = mapped_column(
+        PGUID(as_uuid=True), primary_key=True, default=uuid4
+    )
+    name: Mapped[str] = mapped_column(String(64), nullable=False, unique=True)
+    description: Mapped[str] = mapped_column(String(256), nullable=False, default="")
+    permission_tags: Mapped[list[str]] = mapped_column(
+        ARRAY(String()), nullable=False, default=list, server_default="'{}'"
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    users: Mapped[list[User]] = relationship(
+        secondary=user_roles_table,
+        back_populates="roles",
+    )

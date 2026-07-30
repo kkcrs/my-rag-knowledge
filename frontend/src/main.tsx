@@ -7,6 +7,9 @@ import { RouterProvider } from 'react-router-dom'
 import { router } from '@/routes'
 import 'antd/dist/reset.css'
 import '@/api/client'
+import { useAuthStore } from '@/stores/authStore'
+
+useAuthStore.getState().hydrate()
 
 const queryClient = new QueryClient({
     defaultOptions: {

@@ -2,11 +2,26 @@ from dataclasses import dataclass
 from collections.abc import Sequence
 from uuid import UUID
 
-from sqlalchemy import delete, func, select
+from sqlalchemy import and_, delete, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.sql.elements import ColumnElement
 
 from app.db.models import Document, DocumentChunk
 from sqlalchemy.orm import selectinload
+
+WILDCARD_PERMISSION_TAG = "*"
+
+
+def _permission_where(permission_tags: list[str] | None) -> ColumnElement[bool] | None:
+    """构造文档可见性 WHERE 条件。"""
+    if permission_tags is None:
+        return None
+    if WILDCARD_PERMISSION_TAG in permission_tags:
+        return None
+    return or_(
+        func.cardinality(Document.permission_tags) == 0,
+        Document.permission_tags.op("&&")(permission_tags),
+    )
 
 
 @dataclass(frozen=True)
@@ -97,6 +112,8 @@ class DocumentChunkRepository:
         self,
         query_embedding: list[float],
         top_k: int,
+        *,
+        permission_tags: list[str] | None = None,
     ) -> list[tuple[DocumentChunk, float]]:
         """按 cosine 距离做 Top-K 向量检索。
 
@@ -106,10 +123,14 @@ class DocumentChunkRepository:
         而不会再发 N 次 lazy load 查询
         """
         distance = DocumentChunk.embedding.cosine_distance(query_embedding)
+        conditions: list[ColumnElement[bool]] = [Document.status == "ready"]
+        perm_where = _permission_where(permission_tags)
+        if perm_where is not None:
+            conditions.append(perm_where)
         stmt = (
             select(DocumentChunk, distance.label("distance"))
             .join(Document, Document.id == DocumentChunk.document_id)
-            .where(Document.status == "ready")
+            .where(and_(*conditions))
             .order_by(distance.asc(), DocumentChunk.id.asc())
             .limit(top_k)
             .options(selectinload(DocumentChunk.document))
@@ -121,6 +142,8 @@ class DocumentChunkRepository:
         self,
         query: str,
         top_k: int,
+        *,
+        permission_tags: list[str] | None = None,
     ) -> list[tuple[DocumentChunk, float]]:
         """中文全文检索 Top-K: plainto_tsquery + ts_rank.
 
@@ -132,13 +155,17 @@ class DocumentChunkRepository:
         """
         tsquery = func.plainto_tsquery("chinese_zh", query)
         rank_expr = func.ts_rank(DocumentChunk.content_tsv, tsquery)
+        conditions: list[ColumnElement[bool]] = [
+            Document.status == "ready",
+            DocumentChunk.content_tsv.op("@@")(tsquery),
+        ]
+        perm_where = _permission_where(permission_tags)
+        if perm_where is not None:
+            conditions.append(perm_where)
         stmt = (
             select(DocumentChunk, rank_expr.label("rank"))
             .join(Document, Document.id == DocumentChunk.document_id)
-            .where(
-                Document.status == "ready",
-                DocumentChunk.content_tsv.op("@@")(tsquery),
-            )
+            .where(and_(*conditions))
             .order_by(rank_expr.desc(), DocumentChunk.id.asc())
             .limit(top_k)
             .options(selectinload(DocumentChunk.document))

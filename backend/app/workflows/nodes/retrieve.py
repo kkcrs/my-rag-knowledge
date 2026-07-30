@@ -7,6 +7,7 @@ from app.workflows.rag_state import RAGState
 async def retrieve(state: RAGState) -> RAGState:
     retriever = HybridRetriever()
     recall_top_k = settings.retrieval_recalltop_k
+    permissions = state.get("permissions")
 
     if state.get("route") == "multi_query" and state.get("multi_queries"):
         bundles: list[list[RetrievedChunk]] = []
@@ -16,6 +17,7 @@ async def retrieve(state: RAGState) -> RAGState:
                     sub_query,
                     recall_top_k=recall_top_k,
                     final_top_k=recall_top_k,
+                    permission_tags=permissions,
                 )
             )
         chunks = _merge_chunks(bundles, top_k=recall_top_k)
@@ -24,6 +26,7 @@ async def retrieve(state: RAGState) -> RAGState:
             state["query"],
             recall_top_k=recall_top_k,
             final_top_k=recall_top_k,
+            permission_tags=permissions,
         )
 
     return {"retrieved_chunks": chunks}

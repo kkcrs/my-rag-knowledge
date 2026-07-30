@@ -19,8 +19,14 @@ class DocumentRead(BaseModel):
     size: int
     status: DocumentStatusValue
     error_message: str | None = None
+    permission_tags: list[str] = Field(default_factory=list)
+    created_by: UUID | None = None
     created_at: datetime
     updated_at: datetime
+
+
+class DocumentPermissionTagsUpdate(BaseModel):
+    permission_tags: list[str] = Field(default_factory=list)
 
 
 class DocumentListResponse(BaseModel):
