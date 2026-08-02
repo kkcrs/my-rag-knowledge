@@ -105,6 +105,20 @@ class Settings(BaseSettings):
     default_admin_password: str = "admin"
     default_admin_display_name: str = "管理员"
 
+    # ===== Redis =====
+    redis_url: str = "redis://localhost:6379/0"
+    celery_broker_url: str = "redis://localhost:6379/1"
+    celery_result_backend: str = "redis://localhost:6379/2"
+
+    # ===== 语义缓存 =====
+    semantic_cache_enabled: bool = True
+    semantic_cache_ttl_seconds: int = 3600
+    semantic_cache_min_similarity: float = 0.92
+
+    # ===== 滑动窗口限流 =====
+    rate_limit_enabled: bool = True
+    rate_limit_per_minute: int = 60
+
     verify_answer_enabled: bool = True
 
     @property

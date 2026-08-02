@@ -150,6 +150,7 @@ class MessageRead(BaseModel):
     verify_result: VerifyResultRead | None = None
     trace_id: str | None = None
     trace_url: str | None = None
+    cache_hit: bool = False
 
     @classmethod
     def from_orm(cls, message) -> "MessageRead":  # type: ignore[no-untyped-def]
@@ -175,6 +176,7 @@ class MessageRead(BaseModel):
             else None,
             trace_id=trace_id,
             trace_url=build_trace_url(trace_id),
+            cache_hit=_parse_cache_hit(message.extra_metadata) if is_assistant else False,
         )
 
 def _parse_agent_steps(metadata: dict | None) -> list[AgentStep] | None:
@@ -241,3 +243,9 @@ def _parse_query_route(metadata: dict | None) -> QueryRouteRead | None:
         return QueryRouteRead.model_validate(raw)
     except Exception:
         return None
+
+
+def _parse_cache_hit(metadata: dict | None) -> bool:
+    if not metadata:
+        return False
+    return bool(metadata.get("cache_hit"))

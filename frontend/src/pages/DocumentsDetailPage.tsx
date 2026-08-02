@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useAuthStore } from '@/stores/authStore'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import {
@@ -11,6 +11,7 @@ import {
   Modal,
   Pagination,
   Popconfirm,
+  Progress,
   Skeleton,
   Space,
   Statistic,
@@ -20,6 +21,7 @@ import {
 } from 'antd'
 import {
   ArrowLeftOutlined,
+  CloudUploadOutlined,
   DeleteOutlined,
   DownloadOutlined,
   EyeOutlined,
@@ -33,6 +35,7 @@ import {
   deleteDocument,
   getDocument,
   getDocumentChunk,
+  reindexDocument,
   listDocumentChunks,
   retryDocument,
 } from '@/client/sdk.gen'
@@ -40,6 +43,7 @@ import type {
   DocumentChunkDetail,
   DocumentChunkRead,
   DocumentRead,
+  IngestionTaskRead,
 } from '@/client/types.gen'
 import {
   getStatusColor,
@@ -65,6 +69,7 @@ const DELETABLE_STATUSES: ReadonlySet<DocumentRead['status']> = new Set([
 ])
 
 export function DocumentDetailPage() {
+  const isAdmin = useAuthStore((s) => Boolean(s.user?.isAdmin))
   const { id = '' } = useParams<{ id: string }>()
   const navigate = useNavigate()
   const queryClient = useQueryClient()
@@ -123,6 +128,29 @@ export function DocumentDetailPage() {
     },
   })
 
+  const reindexMutation = useMutation({
+    mutationFn: async (file: File) => {
+      const res = await reindexDocument({
+        path: { document_id: id },
+        body: { file },
+      })
+      return res.data!
+    },
+    onSuccess: () => {
+      message.success('已提交重新索引')
+      queryClient.invalidateQueries({ queryKey: ['documents'] })
+    },
+  })
+
+  const reindexInputRef = useRef<HTMLInputElement>(null)
+  const onPickReindexFile = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (file) {
+      reindexMutation.mutate(file)
+    }
+    e.target.value = ''
+  }
+
   const deleteMutation = useMutation({
     mutationFn: async () => {
       await deleteDocument({ path: { document_id: id } })
@@ -167,6 +195,25 @@ export function DocumentDetailPage() {
             重试解析
           </Button>
         ) : null}
+        {isAdmin ? (
+          <>
+            <input
+              ref={reindexInputRef}
+              type="file"
+              accept=".pdf,.docx,.md,.markdown,.html,.htm"
+              style={{ display: 'none' }}
+              onChange={onPickReindexFile as never}
+            />
+            <Button
+              icon={<CloudUploadOutlined />}
+              disabled={!isTerminalStatus(doc.status)}
+              loading={reindexMutation.isPending}
+              onClick={() => reindexInputRef.current?.click()}
+            >
+              上传新版本
+            </Button>
+          </>
+        ) : null}
         <Popconfirm
           title="确认删除该文档？"
           description="将同时删除文档内容、所有切片以及云端原文件，无法恢复。"
@@ -200,6 +247,9 @@ export function DocumentDetailPage() {
         <Descriptions.Item label="状态">
           <Tag color={getStatusColor(doc.status)}>{getStatusLabel(doc.status)}</Tag>
         </Descriptions.Item>
+        <Descriptions.Item label="版本">
+          <Tag color="purple">v{doc.version}</Tag>
+        </Descriptions.Item>
         <Descriptions.Item label="ID">{doc.id}</Descriptions.Item>
         <Descriptions.Item label="文件 hash">{doc.file_hash}</Descriptions.Item>
         <Descriptions.Item label="MIME 类型">{doc.mime_type}</Descriptions.Item>
@@ -214,7 +264,12 @@ export function DocumentDetailPage() {
       <Card title="原文预览" style={{ marginBottom: 24 }}>
         <PreviewArea mimeType={doc.mime_type} previewUrl={previewUrl} />
       </Card>
-      <Card title="切分结果">
+      {doc.latest_task ? (
+        <Card title="最近一次入库任务" style={{ marginBottom: 24 }}>
+          <IngestionTaskCard task={doc.latest_task} />
+        </Card>
+      ) : null}
+      <Card title="切分结果" style={{ marginBottom: 24 }}>
         <ChunksSection
           docStatus={doc.status}
           chunksQuery={chunksQuery}
@@ -431,3 +486,61 @@ export function DocumentDetailPage() {
       </>
     )
   }
+const TASK_TYPE_LABEL: Record<IngestionTaskRead['task_type'], string> = {
+  ingest: '首次入库',
+  reindex: '增量重建',
+}
+
+const TASK_STATUS_COLOR: Record<IngestionTaskRead['status'], string> = {
+  pending: 'default',
+  running: 'processing',
+  success: 'success',
+  failed: 'error',
+}
+
+const TASK_STATUS_LABEL: Record<IngestionTaskRead['status'], string> = {
+  pending: '排队中',
+  running: '执行中',
+  success: '已完成',
+  failed: '失败',
+}
+
+function IngestionTaskCard({ task }: { task: IngestionTaskRead }) {
+  const percent =
+    task.progress_total > 0
+      ? Math.min(100, Math.round((task.progress_done / task.progress_total) * 100))
+      : 0
+  return (
+    <Space direction="vertical" size="middle" style={{ width: '100%' }}>
+      <Space wrap>
+        <Tag>{TASK_TYPE_LABEL[task.task_type]}</Tag>
+        <Tag color={TASK_STATUS_COLOR[task.status]}>
+          {TASK_STATUS_LABEL[task.status]}
+        </Tag>
+        <Text type="secondary">
+          创建于 {new Date(task.created_at).toLocaleString('zh-CN')}
+        </Text>
+      </Space>
+      <Progress
+        percent={percent}
+        status={
+          task.status === 'failed'
+            ? 'exception'
+            : task.status === 'success'
+            ? 'success'
+            : 'active'
+        }
+        format={() =>
+          task.progress_total > 0
+            ? `${task.progress_done} / ${task.progress_total}`
+            : task.status === 'success'
+            ? '完成'
+            : '等待中'
+        }
+      />
+      {task.error_message ? (
+        <Alert type="error" showIcon message="任务失败" description={task.error_message} />
+      ) : null}
+    </Space>
+  )
+}

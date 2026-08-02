@@ -4,7 +4,9 @@ from uuid import UUID
 from fastapi import Depends, Header
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.config import settings
 from app.core.exceptions import PermissionError, UnauthorizedError
+from app.core.rate_limiter import get_rate_limiter
 from app.core.security import decode_access_token
 from app.db.models import User, UserStatus
 from app.db.repositories.user_repo import UserRepository
@@ -52,8 +54,6 @@ async def get_current_admin(
     return user
 
 
-CurrentUser = Annotated[User, Depends(get_current_user)]
-CurrentAdmin = Annotated[User, Depends(get_current_admin)]
 async def _resolve_user_for_download(
     session: AsyncSession,
     authorization: str | None,
@@ -77,3 +77,12 @@ async def _resolve_user_for_download(
 CurrentUser = Annotated[User, Depends(get_current_user)]
 CurrentAdmin = Annotated[User, Depends(get_current_admin)]
 CurrentViewer = CurrentUser
+async def enforce_rate_limit(
+    user: Annotated[User, Depends(get_current_user)],
+) -> None:
+    if not settings.rate_limit_enabled:
+        return
+    await get_rate_limiter().check(f"user:{user.id}")
+
+
+RateLimited = Annotated[None, Depends(enforce_rate_limit)]

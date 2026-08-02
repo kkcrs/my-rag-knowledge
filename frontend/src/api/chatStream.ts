@@ -7,6 +7,7 @@ export interface ChatStartEvent {
     userMessageId: string
     traceId?: string | null
     traceUrl?: string | null
+    cacheHit?: boolean
 }
 
 export interface ChatQueryRouteEvent {
@@ -99,6 +100,15 @@ export async function streamChat({
                 })
                 throw new FatalSseError('请先登录')
             }
+            if (response.status === 429) {
+                const body = await response.text().catch(() => '')
+                let msg = '请求过于频繁，请稍后再试'
+                try {
+                    const data = JSON.parse(body)
+                    if (data?.message) msg = data.message
+                } catch { /* ignore */ }
+                throw new FatalSseError(msg)
+            }
             if (!response.ok) {
                 const responseText = await response.text().catch(() => '')
                 throw new FatalSseError(responseText || `HTTP ${response.status}`)
@@ -117,6 +127,7 @@ export async function streamChat({
                         userMessageId: data.user_message_id,
                         traceId: data.trace_id ?? null,
                         traceUrl: data.trace_url ?? null,
+                        cacheHit: Boolean(data.cache_hit),
                     })
                     break
                 case 'query_route':

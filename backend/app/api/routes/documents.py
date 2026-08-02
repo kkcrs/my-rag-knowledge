@@ -2,9 +2,9 @@ import json
 from urllib.parse import quote
 from uuid import UUID
 
-from fastapi import APIRouter, BackgroundTasks, File, Form, Header, Query, Response, UploadFile
+from fastapi import APIRouter, File, Form, Header, Query, Response, UploadFile
 
-from app.api.deps import CurrentAdmin, CurrentViewer, DbSession
+from app.api.deps import CurrentAdmin, CurrentViewer, DbSession, RateLimited
 from app.api.schemas.documents import (
     DocumentChunkDetail,
     DocumentChunkListResponse,
@@ -53,8 +53,16 @@ async def list_documents(
         page, page_size, status=status_filter,
         permission_tags=_viewer_tags(user),
     )
+    latest_tasks = await service.get_latest_tasks_batch(
+        [d.id for d in items]
+    )
     return DocumentListResponse(
-        items=[DocumentRead.model_validate(d) for d in items],
+        items=[
+            DocumentRead.model_validate(
+                {**d.__dict__, "latest_task": latest_tasks.get(d.id)}
+            )
+            for d in items
+        ],
         total=total,
         page=page,
         page_size=page_size,
@@ -156,8 +164,8 @@ async def download_document(
 @router.post("", response_model=DocumentRead, status_code=201, operation_id="uploadDocument")
 async def upload_document(
     admin: CurrentAdmin,
+    rate_limit: RateLimited,
     session: DbSession,
-    background_tasks: BackgroundTasks,
     file: UploadFile = File(..., description="上传文件"),
     permission_tags: str | None = Form(
         default=None,
@@ -175,7 +183,7 @@ async def upload_document(
 
     service = _get_document_service(session)
     document = await service.upload(
-        file, background_tasks,
+        file,
         created_by=admin.id, permission_tags=tags,
     )
     return DocumentRead.model_validate(document)
@@ -201,11 +209,27 @@ async def retry_document(
     _: CurrentAdmin,
     document_id: UUID,
     session: DbSession,
-    background_tasks: BackgroundTasks,
 ) -> DocumentRead:
     service = _get_document_service(session)
-    doc = await service.retry(document_id, background_tasks)
+    doc = await service.retry(document_id)
     return DocumentRead.model_validate(doc)
+
+
+@router.post(
+    "/{document_id}/reindex",
+    response_model=DocumentRead,
+    operation_id="reindexDocument",
+)
+async def reindex_document(
+    _: CurrentAdmin,
+    rate_limit: RateLimited,
+    document_id: UUID,
+    session: DbSession,
+    file: UploadFile = File(..., description="新版本文件"),
+) -> DocumentRead:
+    service = _get_document_service(session)
+    document = await service.reindex(document_id, file)
+    return DocumentRead.model_validate(document)
 
 
 @router.patch(

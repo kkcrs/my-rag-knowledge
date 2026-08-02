@@ -1,6 +1,6 @@
 from uuid import UUID
 
-from fastapi import APIRouter, BackgroundTasks, Depends, Query, Response
+from fastapi import APIRouter, Depends, Query, Response
 
 from app.api.deps import DbSession, get_current_admin
 from app.api.schemas.evaluations import (
@@ -48,11 +48,11 @@ async def list_evaluation_datasets(session: DbSession) -> DatasetListResponse:
 async def create_evaluation_run(
     payload: EvaluationRunCreate,
     session: DbSession,
-    background_tasks: BackgroundTasks,
 ) -> EvaluationRunRead:
     service = EvaluationService(session)
     run = await service.create_run(name=payload.name, dataset_name=payload.dataset_name)
-    background_tasks.add_task(execute_evaluation_run, run.id)
+    from app.ingestion.tasks import execute_evaluation_task
+    execute_evaluation_task.delay(str(run.id))
     return EvaluationRunRead.model_validate(run)
 
 

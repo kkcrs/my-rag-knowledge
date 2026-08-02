@@ -16,11 +16,16 @@ from app.core.logging import get_logger
 from app.db.models import AnswerCitation, Conversation, Message, User
 from app.db.repositories.citation_repo import AnswerCitationRepository
 from app.db.session import AsyncSessionLocal
+from app.ingestion.embedder import get_embeddings
 from app.llm.answer_verifier import VerifyResult, get_answer_verifier
 from app.llm.prompts import REFUSAL_ANSWER
 from app.services.permission_service import (
     WILDCARD_PERMISSION_TAG,
     compute_user_permission_tags,
+)
+from app.services.semantic_cache_service import (
+    CachedAnswer,
+    get_semantic_cache,
 )
 from app.core.observability import build_trace_url, get_current_trace_id
 from app.retrieval.vector_retriever import RetrievedChunk
@@ -174,7 +179,18 @@ class ChatService:
                 # load_context 是唯一需要 DB session 的节点，由 service 先填好再交给图。
                 state.update(await load_context(state, session))
 
-                # 2. 跑 RAG 子图：normalize_query -> route_query -> 检索决策循环
+                # 2. 语义缓存：相同问题 + 权限一致直接命中
+                cache_hit, query_embedding = await self._try_cache_lookup(
+                    state["question"], state.get("permissions", [])
+                )
+                if cache_hit is not None:
+                    async for event in self._stream_cache_hit(
+                        state, session, cache_hit, trace_id
+                    ):
+                        yield event
+                    return
+
+                # 3. 跑 RAG 子图
                 final_state = await get_rag_graph().ainvoke(state)
                 state.update(final_state)  # type: ignore[arg-type]
 
@@ -290,6 +306,25 @@ class ChatService:
                     state, session, verify_result=verify_result
                 )
 
+                # 8. 写语义缓存（仅 verify 通过且非拒答）
+                if (
+                    settings.semantic_cache_enabled
+                    and not state.get("refused")
+                    and query_embedding is not None
+                ):
+                    await get_semantic_cache().save(
+                        question=state["question"],
+                        query_embedding=query_embedding,
+                        answer=state["answer"],
+                        citations=[
+                            _serialize_citation(c, ordinal=i)
+                            for i, c in enumerate(
+                                state.get("retrieved_chunks", []), start=1
+                            )
+                        ],
+                        permission_scope=state.get("permissions", []),
+                    )
+
                 yield {
                     "event": "message_end",
                     "data": {
@@ -394,6 +429,92 @@ class ChatService:
                 first_token_latency_ms=None,
                 error_message=str(exc).strip() or exc.__class__.__name__,
             )
+    async def _try_cache_lookup(
+        self, question: str, permissions: list[str],
+    ) -> tuple[CachedAnswer | None, list[float] | None]:
+        if not settings.semantic_cache_enabled:
+            return None, None
+        try:
+            from app.ingestion.embedder import get_embeddings
+            embedding = await get_embeddings().aembed_query(question)
+        except Exception:
+            logger.exception("semantic cache embedding failed, skip lookup")
+            return None, None
+        cached = await get_semantic_cache().lookup(embedding, permissions)
+        return cached, embedding
+
+    async def _stream_cache_hit(
+        self,
+        state: RAGState,
+        session: AsyncSession,
+        cached: CachedAnswer,
+        trace_id: str | None,
+    ):
+        state["answer"] = cached.answer
+        state["refused"] = False
+
+        await self._persist_user_message(state, session)
+        yield {
+            "event": "message_start",
+            "data": {
+                "user_message_id": str(state["user_message_id"]),
+                "trace_id": trace_id,
+                "trace_url": build_trace_url(trace_id),
+                "cache_hit": True,
+            },
+        }
+        yield {
+            "event": "citations",
+            "data": {"citations": cached.citations},
+        }
+        yield {"event": "token", "data": {"delta": cached.answer}}
+        await self._persist_cached_assistant_message(state, session, citations=cached.citations)
+        yield {
+            "event": "message_end",
+            "data": {
+                "message_id": str(state["assistant_message_id"]),
+                "refused": False,
+            },
+        }
+
+    async def _persist_cached_assistant_message(
+        self,
+        state: RAGState,
+        session: AsyncSession,
+        *,
+        citations: list[dict],
+    ) -> None:
+        conv_repo = ConversationRepository(session)
+        citation_repo = AnswerCitationRepository(session)
+        assistant_msg = ConversationRepository.make_assistant_message(
+            state["conversation_id"],
+            content=state["answer"],
+            extra_metadata={
+                "refused": False,
+                "trace_id": state.get("trace_id"),
+                "cache_hit": True,
+            },
+        )
+        await conv_repo.add_messages([assistant_msg])
+
+        citation_rows = [
+            AnswerCitation(
+                message_id=assistant_msg.id,
+                ordinal=idx + 1,
+                document_id=safe_uuid6(c.get("document_id")),
+                chunk_id=safe_uuid6(c.get("chunk_id")),
+                document_name=c.get("document_name", ""),
+                page_no=c.get("page_no"),
+                quote=c.get("quote", ""),
+                retrieval_meta=c.get("retrieval_meta"),
+            )
+            for idx, c in enumerate(citations)
+        ]
+        if citation_rows:
+            await citation_repo.bulk_add(citation_rows)
+        await session.commit()
+        state["assistant_message_id"] = assistant_msg.id
+
     async def _persist_user_message(
         self, state: RAGState, session: AsyncSession
     ) -> None:
@@ -441,6 +562,7 @@ class ChatService:
                 )
             ),
             "trace_id": state.get("trace_id"),
+            "cache_hit": False,
         }
         if verify_result is not None:
             extra_metadata["verify_result"] = _build_verify_payload(
@@ -521,3 +643,12 @@ def _build_verify_payload(
     if not result.verified and replacement_answer is not None:
         payload["replacement_answer"] = replacement_answer
     return payload
+
+
+def safe_uuid6(raw: str | None) -> UUID | None:
+    if not raw:
+        return None
+    try:
+        return UUID(str(raw))
+    except (TypeError, ValueError):
+        return None

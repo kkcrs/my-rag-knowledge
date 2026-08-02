@@ -5,7 +5,7 @@ from fastapi import APIRouter, Query, Response
 from fastapi.responses import EventSourceResponse
 from fastapi.sse import ServerSentEvent
 
-from app.api.deps import CurrentUser, DbSession
+from app.api.deps import CurrentUser, DbSession, RateLimited
 from app.api.schemas.chat import (
     ChatRequest,
     ConversationCreate,
@@ -111,6 +111,7 @@ async def delete_conversation(
 )
 async def stream_chat(
     user: CurrentUser,
+    rate_limit: RateLimited,
     conversation_id: UUID,
     payload: ChatRequest,
     session: DbSession,

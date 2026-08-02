@@ -50,6 +50,7 @@ interface UiMessage {
     refused?: boolean
     traceId?: string | null
     traceUrl?: string | null
+    cacheHit?: boolean
     status?: AssistantStatus
     error?: string | null
 }
@@ -67,6 +68,7 @@ function fromServerMessage(message: MessageRead): UiMessage {
         refused: message.role === 'assistant' && message.content === REFUSAL_ANSWER,
         traceId: message.trace_id ?? null,
         traceUrl: message.trace_url ?? null,
+        cacheHit: Boolean((message as Record<string, unknown>).cache_hit),
         status: 'done',
     }
 }
@@ -223,6 +225,7 @@ export function ChatPage() {
                                     ...previous,
                                     traceId: event.traceId ?? null,
                                     traceUrl: event.traceUrl ?? null,
+                                    cacheHit: Boolean((event as Record<string, unknown>).cacheHit),
                                 }))
                             }
                             break
@@ -447,6 +450,9 @@ function MessageBubble({ message }: MessageBubbleProps) {
             >
                 {message.error ? (
                     <Alert type="error" message={message.error} style={{ marginBottom: 8 }} />
+                ) : null}
+                {!isUser && message.cacheHit ? (
+                    <Tag color="cyan" style={{ marginBottom: 8 }}>缓存命中</Tag>
                 ) : null}
                 {!isUser && message.verifyResult && !message.verifyResult.verified ? (
                     <Alert

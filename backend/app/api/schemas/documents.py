@@ -7,6 +7,24 @@ from pydantic import BaseModel, ConfigDict, Field
 # 与 app.db.models.DocumentStatus 同步；用 Literal 让前端 openapi-typescript
 # 生成精确的字面量联合类型，而不是宽 string
 DocumentStatusValue = Literal["uploading", "parsing", "indexing", "ready", "failed"]
+IngestionTaskTypeValue = Literal["ingest", "reindex"]
+IngestionTaskStatusValue = Literal["pending", "running", "success", "failed"]
+
+
+class IngestionTaskRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: UUID
+    task_type: IngestionTaskTypeValue
+    status: IngestionTaskStatusValue
+    retry_count: int
+    error_message: str | None = None
+    progress_total: int
+    progress_done: int
+    started_at: datetime | None = None
+    finished_at: datetime | None = None
+    created_at: datetime
+
 
 
 class DocumentRead(BaseModel):
@@ -21,6 +39,8 @@ class DocumentRead(BaseModel):
     error_message: str | None = None
     permission_tags: list[str] = Field(default_factory=list)
     created_by: UUID | None = None
+    version: int = 1
+    latest_task: IngestionTaskRead | None = None
     created_at: datetime
     updated_at: datetime
 
